@@ -1,0 +1,25 @@
+{
+  "name": "gpu-server-setup",
+  "displayName": "gpu-server-setup",
+  "version": "0.1.0",
+  "description": "Prepare a Linux server with NVIDIA GPUs for LLM and neural-network workloads: NVIDIA driver + CUDA from the official repo, Docker Engine + NVIDIA Container Toolkit, GPU passthrough into containers, staged verification gates, and ready docker-compose presets for vLLM, Infinity, OpenWebUI and Ollama.",
+  "author": {
+    "name": "Pavel Rykov",
+    "email": "paul@drteam.rocks"
+  },
+  "license": "MIT",
+  "keywords": [
+    "nvidia",
+    "cuda",
+    "gpu",
+    "docker",
+    "nvidia-container-toolkit",
+    "vllm",
+    "ollama",
+    "openwebui",
+    "llm",
+    "inference",
+    "debian",
+    "ubuntu"
+  ]
+}
