@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Prepare a Linux server with NVIDIA GPUs for LLM and neural-network workloads, from bare OS to a verified Docker + GPU base, with optional inference stacks and GPU power capping.",
-    "version": "0.2.0"
+    "version": "0.2.1"
   },
   "plugins": [
     {
       "name": "gpu-server-setup",
       "source": "./",
       "description": "Prepare a Linux server with NVIDIA GPUs for LLM and neural-network workloads: NVIDIA driver + CUDA from the official repo, Docker Engine + NVIDIA Container Toolkit as the mandatory base, GPU passthrough into containers, staged verification gates, optional docker-compose presets for vLLM, Infinity, OpenWebUI and Ollama (llama.cpp via its official image), and GPU power-limit setup persisted via systemd.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "category": "ops",
       "license": "MIT"
     }

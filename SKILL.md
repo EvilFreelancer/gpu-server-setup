@@ -1,6 +1,6 @@
 ---
 name: gpu-server-setup
-version: 0.2.0
+version: 0.2.1
 description: >
   Prepare a Linux server with NVIDIA GPUs for neural-network and LLM workloads,
   or diagnose one that misbehaves. Use when the user asks to set up or prepare a
@@ -119,9 +119,11 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
 - **GPU power limit** (PSU or cooling cannot take all cards at full TGP, or
   efficiency tuning): follow the procedure in `references/monitoring.md` —
   query the allowed range first, set with `nvidia-smi -pl`, verify the new
-  limit is in force, persist it with the systemd unit. Never invent the
-  wattage: the user names the target, or you propose one from the queried
-  range and confirm before applying.
+  limit is in force. When the user asks for a **permanent** cap (survive
+  reboots), a bare `nvidia-smi -pl` is not enough: install the systemd unit
+  from the reference, enabled so it re-applies the limit at every system
+  start. Never invent the wattage: the user names the target, or you propose
+  one from the queried range and confirm before applying.
 - **Monitoring** (`nvitop`, `watch nvidia-smi`): `references/monitoring.md`.
 
 ## Iron rules
