@@ -81,8 +81,11 @@ it done:
 nvidia-smi --query-gpu=index,power.limit,power.draw --format=csv
 ```
 
-**5. Persist across reboots.** `-pl` does not survive a reboot — install a
-oneshot systemd unit (one `ExecStart` line per `-i` group on mixed hosts):
+**5. Make it permanent — the systemd unit.** `-pl` alone does not survive a
+reboot, so when the user asks for a permanent cap ("навсегда", "survive
+reboots"), this step is mandatory, not a nicety. Install a oneshot systemd
+unit that re-applies persistence mode and the limit at every system start
+(one `ExecStart` line per `-i` group on mixed hosts):
 
 ```ini
 # /etc/systemd/system/nvidia-power-limit.service
