@@ -21,9 +21,14 @@ and a production setup runbook for multi-GPU inference servers.
 - **Staged verification** — hard gates between layers (`lspci` →
   `nvidia-smi` → GPU-in-Docker → service health); the skill never proceeds
   past a failing gate. `scripts/check.sh` runs the gates automatically.
-- **Inference presets** — ready docker-compose files for **vLLM**
-  (per-GPU model services), **Infinity** (embeddings), **OpenWebUI** (web UI)
-  and **Ollama**, with the flags that matter explained.
+- **Inference presets (optional)** — the mandatory deliverable is the verified
+  Docker + GPU base; serving stacks go on top only when asked for. Ready
+  docker-compose files for **vLLM** (per-GPU model services), **Infinity**
+  (embeddings), **OpenWebUI** (web UI) and **Ollama** (llama.cpp runs the same
+  way via its official image), with the flags that matter explained.
+- **GPU power limit** — on request: query the card's allowed range, cap with
+  `nvidia-smi -pl`, verify the limit took effect, persist it across reboots
+  with a systemd unit.
 - **Troubleshooting** — symptom → cause → fix table for the classic failures:
   Secure Boot vs DKMS, "Driver/library version mismatch",
   `could not select device driver "nvidia"`, CUDA OOM, silent CPU fallback.
@@ -38,7 +43,7 @@ gpu-server-setup/
 ├─ references/
 │  ├─ nvidia-cuda.md        # driver + CUDA repo, versions, pinning, Secure Boot
 │  ├─ docker-nvidia.md      # Docker Engine, nvidia-ctk, GPU passthrough, /srv layout
-│  ├─ monitoring.md         # nvitop, watch nvidia-smi, power capping
+│  ├─ monitoring.md         # nvitop, watch nvidia-smi, power limit (set/verify/persist)
 │  └─ troubleshooting.md    # 3-layer checklist + symptom/cause/fix table
 ├─ presets/
 │  ├─ vllm.md               # OpenAI-compatible LLM server, one service per GPU
@@ -75,6 +80,7 @@ Ask your agent, for example:
   Qwen3.5-27B and OpenWebUI on top."
 - "Install the NVIDIA driver and CUDA on Debian 12 and wire Docker to the GPU."
 - "nvidia-smi works on the host but containers don't see the GPU — fix it."
+- "Cap every GPU at 250 W and make the limit survive reboots."
 - "Audit this GPU server: what is installed, what is broken?"
 
 Verify a server at any moment:
