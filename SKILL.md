@@ -1,31 +1,34 @@
 ---
 name: gpu-server-setup
-version: 0.1.0
+version: 0.2.0
 description: >
   Prepare a Linux server with NVIDIA GPUs for neural-network and LLM workloads,
   or diagnose one that misbehaves. Use when the user asks to set up or prepare a
   GPU server, install NVIDIA drivers or CUDA on Debian/Ubuntu, wire Docker to
-  GPUs (NVIDIA Container Toolkit), deploy vLLM / Infinity / OpenWebUI / Ollama,
-  or fix "container does not see GPU", "Driver/library version mismatch",
-  "could not select device driver nvidia". Installs everything from one package
-  source (the official CUDA apt repo), verifies every layer with a hard gate
-  before the next, and ships working docker-compose presets.
+  GPUs (NVIDIA Container Toolkit), deploy vLLM / Infinity / OpenWebUI / Ollama /
+  llama.cpp, set or persist a GPU power limit / power cap (nvidia-smi -pl), or
+  fix "container does not see GPU", "Driver/library version mismatch", "could
+  not select device driver nvidia". Installs everything from one package source
+  (the official CUDA apt repo) and verifies every layer with a hard gate before
+  the next; the mandatory deliverable is Docker with a working NVIDIA runtime,
+  serving stacks are optional presets on top.
 metadata:
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
     gpu server, nvidia driver, cuda, cuda-keyring, nvidia-smi, docker gpu,
-    nvidia-container-toolkit, nvidia-ctk, gpus all, vllm, ollama, openwebui,
-    infinity embeddings, driver library version mismatch, could not select
-    device driver
+    nvidia-container-toolkit, nvidia-ctk, gpus all, vllm, ollama, llama.cpp,
+    openwebui, infinity embeddings, power limit, power cap, nvidia-smi -pl,
+    ограничить мощность GPU, энергопотребление видеокарты, настроить GPU сервер,
+    driver library version mismatch, could not select device driver
 ---
 
 # GPU server setup
 
 Turn a bare **Debian/Ubuntu** server with NVIDIA GPUs into a verified inference
-box: driver → Docker → GPU runtime → serving stack. The skill encodes one
-field-tested path and the discipline around it, so you assemble a working
-server instead of improvising package sources.
+box: driver → Docker → GPU runtime, plus an optional serving stack on top. The
+skill encodes one field-tested path and the discipline around it, so you
+assemble a working server instead of improvising package sources.
 
 Scope: **Debian 10–13, Ubuntu 20.04–24.04, x86_64, NVIDIA only.** No Windows/
 WSL, no RHEL-family, no AMD/ROCm, no Kubernetes. If the user is outside this
@@ -38,13 +41,23 @@ working before the next one starts; a failing gate stops the flow — fix it via
 `references/troubleshooting.md`, re-run the gate, only then continue. Most
 "GPU server is broken" situations are a skipped gate or a second package source.
 
+**The mandatory deliverable is the verified Docker + NVIDIA base** — the stage-2
+gate (`docker run … nvidia-smi` sees every GPU). Serving stacks — vLLM, Ollama,
+llama.cpp, Infinity, OpenWebUI — are optional add-ons: deploy one only when the
+user asked for it. A pass that ends at a proven stage-2 gate with no stack is a
+complete, successful Prepare, not an unfinished one.
+
 ## Three modes
 
 | Mode | Trigger | What you produce |
 |------|---------|------------------|
-| **Prepare** | clean/fresh server to set up | full pass: stages 0→4 |
+| **Prepare** | clean/fresh server to set up | stages 0→2 always; 3 only if a stack was requested; 4 always |
 | **Deploy** | driver/Docker already fine, add a stack | stages 3→4 on top of a verified base |
 | **Diagnose** | "X does not work / does not see GPU" | layer-by-layer audit, fix, re-gate |
+
+Standalone requests on an already-working server (cap the power limit, add
+monitoring) are valid tasks of their own — no full pass, just the live-server
+rules plus the matching reference (see "On-request extras").
 
 With shell access to the server, **detect facts instead of asking**. Without
 access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
@@ -53,8 +66,10 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
 
 1. **Gather facts (gap checklist).** OS and version (`cat /etc/os-release`),
    GPUs (`lspci | grep -E "VGA|3D|NVIDIA"`), disk (`df -h /`), Secure Boot
-   (`mokutil --sb-state`), what stack and which models, single- or multi-GPU,
-   network exposure (open network or closed). Ask only what you cannot detect.
+   (`mokutil --sb-state`), whether a serving stack is wanted at all and which
+   ("none" is a valid answer — the base alone is a complete result), which
+   models, single- or multi-GPU, network exposure (open network or closed).
+   Ask only what you cannot detect.
 2. **Pick the mode.** For Diagnose jump straight to the 3-layer checklist in
    `references/troubleshooting.md` and fix the **lowest** failing layer first.
 3. **Stage 0 — base system.**
@@ -77,21 +92,37 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
    `sudo systemctl restart docker` (both mandatory).
    **GATE: `docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi`
    shows the same GPUs as the host.**
-6. **Stage 3 — serving stack.** One service per folder under `/srv`, one GPU
-   pin per service (`device_ids`). Start from `presets/` — `vllm.md`,
-   `infinity.md`, `openwebui.md`, `ollama.md` — and adapt: model, GPU ids,
-   ports, memory budget. Presets are working configs, not copy-paste blanks:
-   fill every `<PLACEHOLDER>`, keep image tags pinned, telemetry off, logs
-   capped. **GATE: health endpoint answers AND a real request returns a sane
-   response** (`/v1/models`, then one chat/embedding call).
-7. **Stage 4 — verify and hand over.** Run the full check:
+6. **Stage 3 — serving stack (optional, only when requested).** Skip straight
+   to stage 4 when the user wants just the base. One service per folder under
+   `/srv`, one GPU pin per service (`device_ids`). Start from `presets/` —
+   `vllm.md`, `infinity.md`, `openwebui.md`, `ollama.md` — and adapt: model,
+   GPU ids, ports, memory budget. For a stack without a preset (e.g. llama.cpp
+   via its official `ghcr.io/ggml-org/llama.cpp:server-cuda` image) apply the
+   same rules: pinned tag, explicit GPU grant, one service per folder. Presets
+   are working configs, not copy-paste blanks: fill every `<PLACEHOLDER>`,
+   keep image tags pinned, telemetry off, logs capped. **GATE: health endpoint
+   answers AND a real request returns a sane response** (`/v1/models`, then
+   one chat/embedding call).
+7. **Stage 4 — verify and hand over.** Run the full check — base form for a
+   docker-only pass, health URLs appended when stacks were deployed:
    ```bash
-   bash scripts/check.sh http://<SERVER_IP>:8081/health
+   bash scripts/check.sh                                  # base: host + docker
+   bash scripts/check.sh http://<SERVER_IP>:8081/health   # + each service
    ```
    Deliver: what was installed (versions), the service map (service → GPU →
-   port → URL), remaining `<PLACEHOLDERS>`, and the warnings that apply
-   (auth off, ports exposed, driver hold). Optional niceties: `nvitop`,
-   power capping — `references/monitoring.md`.
+   port → URL; only when stacks exist), remaining `<PLACEHOLDERS>`, and the
+   warnings that apply (auth off, ports exposed, driver hold). Optional
+   niceties: `nvitop`, power limit — `references/monitoring.md`.
+
+## On-request extras
+
+- **GPU power limit** (PSU or cooling cannot take all cards at full TGP, or
+  efficiency tuning): follow the procedure in `references/monitoring.md` —
+  query the allowed range first, set with `nvidia-smi -pl`, verify the new
+  limit is in force, persist it with the systemd unit. Never invent the
+  wattage: the user names the target, or you propose one from the queried
+  range and confirm before applying.
+- **Monitoring** (`nvitop`, `watch nvidia-smi`): `references/monitoring.md`.
 
 ## Iron rules
 
@@ -144,7 +175,7 @@ skip the container pull; extra args = health URLs).
 
 - `references/nvidia-cuda.md` — repo setup, driver choice, pinning, Secure Boot
 - `references/docker-nvidia.md` — Docker CE, toolkit, GPU passthrough, `/srv` layout
-- `references/monitoring.md` — nvitop, watch, power capping
+- `references/monitoring.md` — nvitop, watch, power limit (set / verify / persist)
 - `references/troubleshooting.md` — 3-layer checklist, symptom→cause→fix table
 - `presets/vllm.md`, `presets/infinity.md`, `presets/openwebui.md`, `presets/ollama.md`
 - `scripts/check.sh` — staged verification (host → docker → services)
