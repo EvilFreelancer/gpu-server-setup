@@ -12,7 +12,7 @@ description: >
   the next; the mandatory deliverable is Docker with a working NVIDIA runtime,
   serving stacks are optional presets on top.
 metadata:
-  version: 0.2.1
+  version: 0.2.2
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
