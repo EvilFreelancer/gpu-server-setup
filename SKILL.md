@@ -1,6 +1,5 @@
 ---
 name: gpu-server-setup
-version: 0.2.1
 description: >
   Prepare a Linux server with NVIDIA GPUs for neural-network and LLM workloads,
   or diagnose one that misbehaves. Use when the user asks to set up or prepare a
@@ -13,6 +12,7 @@ description: >
   the next; the mandatory deliverable is Docker with a working NVIDIA runtime,
   serving stacks are optional presets on top.
 metadata:
+  version: 0.2.1
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
