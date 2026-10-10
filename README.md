@@ -83,11 +83,11 @@ the repo root):
 
 | Tool          | Path |
 |---------------|------|
+| Coddy         | `~/.coddy/skills/gpu-server-setup/` |
 | Claude Code   | `~/.claude/skills/gpu-server-setup/` |
 | Cursor        | `~/.cursor/skills/gpu-server-setup/` |
 | OpenAI Codex  | `~/.codex/skills/gpu-server-setup/` |
 | Kimi Code CLI | `~/.kimi/skills/gpu-server-setup/` |
-| Coddy         | `~/.coddy/skills/gpu-server-setup/` |
 
 The directory name must match the `name` field in `SKILL.md`.
 
