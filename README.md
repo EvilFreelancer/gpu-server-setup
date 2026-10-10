@@ -58,19 +58,38 @@ gpu-server-setup/
 
 ## Install
 
-**Claude Code** (single-plugin marketplace in this repo):
+The skill is distributed through the [rpa-skills](https://github.com/EvilFreelancer/rpa-skills) catalog
+and also installs as a plain skill folder.
 
+**As a plugin (Claude Code)**: add the catalog once, then install this skill from it:
+
+```text
+/plugin marketplace add EvilFreelancer/rpa-skills
+/plugin install gpu-server-setup@rpa-skills
 ```
-/plugin marketplace add EvilFreelancer/gpu-server-setup
-/plugin install gpu-server-setup
+
+**Codex**: `codex plugin marketplace add EvilFreelancer/rpa-skills`, then install `gpu-server-setup` from `/plugins`.
+
+**In Coddy**: the rpa-skills catalog is built into [Coddy](https://coddy.dev) as a system source,
+so there is nothing to connect. One sync installs this skill together with the rest of the collection
+into `~/.coddy/skills/gpu-server-setup/` and keeps it up to date (or press **Sync all** in Settings → Skills):
+
+```bash
+coddy skills sync
 ```
 
-**Any agent (manual):** copy this folder into the agent's skills directory
-(e.g. `~/.claude/skills/gpu-server-setup/`). The agent loads it from the
-`SKILL.md` frontmatter.
+**As a plain skill folder**: copy or symlink this repository into a skill root (its `SKILL.md` lives at
+the repo root):
 
-**Cursor / Codex:** point the agent at the repo; the `.cursor-plugin/` and
-`.codex-plugin/` manifests describe the same skill.
+| Tool          | Path |
+|---------------|------|
+| Claude Code   | `~/.claude/skills/gpu-server-setup/` |
+| Cursor        | `~/.cursor/skills/gpu-server-setup/` |
+| OpenAI Codex  | `~/.codex/skills/gpu-server-setup/` |
+| Kimi Code CLI | `~/.kimi/skills/gpu-server-setup/` |
+| Coddy         | `~/.coddy/skills/gpu-server-setup/` |
+
+The directory name must match the `name` field in `SKILL.md`.
 
 ## Usage
 

@@ -10,7 +10,8 @@ manifest.
 ## Repository layout
 
 This skill is packaged for **Claude Code**, **Cursor**, and **OpenAI Codex**
-(and installs as a plain skill folder for other agents). The layout is **flat** —
+(and installs as a plain skill folder for other agents; **Coddy** installs it from the
+`rpa-skills` catalog, which Coddy has built in). The layout is **flat** —
 `SKILL.md` and its assets live at the repo root, and the plugin manifests point
 their skill source at `./`.
 
