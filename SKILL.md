@@ -14,7 +14,7 @@ description: >
   vendor and a hard gate after every layer; the mandatory deliverable is Docker
   with verified GPU access, serving stacks are optional presets on top.
 metadata:
-  version: 0.3.0
+  version: 0.3.1
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
@@ -94,8 +94,10 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
    which slot hangs off the CPU or the chipset), disk (`df -h /`, `lsblk -d -o
    NAME,ROTA,SIZE`), Secure Boot (`mokutil --sb-state`), whether a serving
    stack is wanted at all and which ("none" is a valid answer), which models,
-   single- or multi-GPU, network exposure (open network or closed). Ask only
-   what you cannot detect.
+   single- or multi-GPU, network exposure (open network or closed). Intel
+   Arc: Resizable BAR (`sudo lspci -vv -d 8086: | grep 'BAR 2: current size'`
+   must equal the VRAM); when it shows 256MB, the user switches BIOS
+   settings before anything else. Ask only what you cannot detect.
 2. **Pick the mode.** For Diagnose jump straight to the 3-layer checklist in
    the vendor's `troubleshooting.md` and fix the **lowest** failing layer first.
 3. **Stage 0 — base system.**
@@ -188,6 +190,10 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
   before every reboot. Intel: i915/xe for every installed kernel, and the same
   headers rule as soon as any DKMS module (e.g. a fan driver) is on the box.
   A green gate on the old kernel does not prove the next boot.
+- **Intel Arc needs Resizable BAR.** Above 4G Decoding and Re-Size BAR on,
+  CSM off, in the BIOS, before stage 1. Without it only 256 MiB of VRAM is
+  CPU-visible: slow loads, failed allocations, unstable cards. No driver or
+  kernel setting replaces it; it is a BIOS change for the user to make.
 - **Reboot after driver install** and after any kernel/driver upgrade, before
   judging anything broken.
 - **Containers see zero GPUs by default.** Every service gets an explicit
@@ -225,6 +231,10 @@ container probe, extra args = health URLs).
   after it — toolkit installed, runtime still absent.
 - Installing the Intel compute runtime, oneAPI or xpu-smi on a Docker-only
   host "to be safe": nothing uses it, and on Debian it means a second source.
+- Bringing up Intel Arc with Resizable BAR or Above 4G Decoding off in the
+  BIOS, then debugging "slow" or "unstable" cards in software.
+- Restarting llama.cpp SYCL containers without a compiler-cache volume: every
+  start JIT-compiles the kernels again (about 80 s on a desktop CPU).
 - No reboot after driver install, then debugging a "broken" driver.
 - Installing only `linux-headers-$(uname -r)` without the headers metapackage —
   the next kernel upgrade can leave DKMS modules unbuilt until a power cut
