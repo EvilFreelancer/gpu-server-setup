@@ -1,7 +1,7 @@
 {
   "name": "gpu-server-setup",
-  "description": "Prepare a Linux server with NVIDIA GPUs for LLM and neural-network workloads: NVIDIA driver + CUDA from the official repo, Docker Engine + NVIDIA Container Toolkit as the mandatory base, GPU passthrough into containers, staged verification gates, optional docker-compose presets for vLLM, Infinity, OpenWebUI and Ollama (llama.cpp via its official image), and GPU power-limit setup persisted via systemd.",
-  "version": "0.2.2",
+  "description": "Prepare a Linux server with NVIDIA or Intel Arc GPUs for LLM and neural-network workloads: NVIDIA driver + CUDA from the official repo or the in-tree Intel i915/xe driver with distro firmware, Docker Engine with verified GPU access (NVIDIA Container Toolkit or /dev/dri passthrough) as the mandatory base, staged verification gates for both vendors, optional docker-compose presets for vLLM, Infinity, OpenWebUI and Ollama plus Intel Arc stacks (llama.cpp SYCL/Vulkan, Ollama, OpenVINO, vLLM), GPU power limits persisted via systemd, case fans driven by GPU temperature and Intel Arc idle-power fixes (ASPM).",
+  "version": "0.3.0",
   "author": {
     "name": "Pavel Rykov",
     "email": "paul@drteam.rocks",
@@ -24,6 +24,17 @@
     "inference",
     "power-limit",
     "debian",
-    "ubuntu"
+    "ubuntu",
+    "intel",
+    "intel-arc",
+    "a770",
+    "battlemage",
+    "i915",
+    "xe",
+    "sycl",
+    "level-zero",
+    "openvino",
+    "aspm",
+    "fancontrol"
   ]
 }
