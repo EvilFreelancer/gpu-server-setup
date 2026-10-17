@@ -1,14 +1,15 @@
 # gpu-server-setup
 
-An agent skill that prepares a **Linux server with NVIDIA GPUs** for
-neural-network and LLM workloads — from a bare Debian/Ubuntu install to a
+An agent skill that prepares a **Linux server with NVIDIA or Intel Arc GPUs**
+for neural-network and LLM workloads — from a bare Debian/Ubuntu install to a
 verified Docker + GPU inference stack. It is a portable skill: install it in
 Claude Code, Cursor, or OpenAI Codex, or drop the folder into any agent that
 reads `SKILL.md`.
 
 Based on two field-tested sources by the author: the Dzen article
 ["Как подготовить Linux к запуску и обучению нейросетей? (+ Docker)"](https://dzen.ru/a/ZVt9kRBCTCGlQqyP)
-and a production setup runbook for multi-GPU inference servers.
+and a production setup runbook for multi-GPU inference servers. The Intel Arc
+part comes from bringing up a dual Arc A770 server on Debian 13 in 2026.
 
 ## What it does
 
@@ -19,45 +20,65 @@ and a production setup runbook for multi-GPU inference servers.
   metapackage (`linux-headers-amd64` on standard Debian; match the kernel flavour
   elsewhere), with headers and NVIDIA modules verified for installed kernels
   before a reboot. A kernel upgrade must not silently disable GPUs on the next boot.
+- **Intel Arc (Alchemist and Battlemage)** — the in-tree i915/xe driver with
+  distro firmware, Resizable BAR and real PCIe link checks, the
+  trixie-backports kernel when the host must see GPU temperatures, Docker
+  access through `/dev/dri` render nodes with no toolkit, and a field-tested
+  map of what serves on Arc today: llama.cpp SYCL/Vulkan, Ollama, OpenVINO
+  Model Server, vLLM on Battlemage and a no-build vLLM recipe for the A770.
 - **Docker + NVIDIA Container Toolkit** — official Docker Engine install,
   `nvidia-ctk runtime configure`, and explicit GPU passthrough (`--gpus`,
   compose `deploy` blocks, per-service `device_ids` pinning).
 - **Staged verification** — hard gates between layers (`lspci` →
-  `nvidia-smi` → GPU-in-Docker → service health); the skill never proceeds
-  past a failing gate. `scripts/check.sh` runs the gates automatically.
+  `nvidia-smi` or i915/xe + render nodes + GuC → GPU-in-Docker → service
+  health); the skill never proceeds past a failing gate. `scripts/check.sh`
+  detects the vendor and runs the gates automatically.
 - **Inference presets (optional)** — the mandatory deliverable is the verified
   Docker + GPU base; serving stacks go on top only when asked for. Ready
   docker-compose files for **vLLM** (per-GPU model services), **Infinity**
   (embeddings), **OpenWebUI** (web UI) and **Ollama** (llama.cpp runs the same
   way via its official image), with the flags that matter explained.
 - **GPU power limit** — on request: query the card's allowed range, cap with
-  `nvidia-smi -pl`, verify the limit took effect, persist it across reboots
-  with a systemd unit.
+  `nvidia-smi -pl` or Intel hwmon `power1_max`, verify the limit took effect,
+  persist it across reboots with a systemd unit (`scripts/arc-power-cap.sh`
+  for Intel).
+- **Cooling and idle power (Intel Arc)** — the honest answer that Arc fan
+  curves cannot be changed from Linux, and what works instead: case fans via
+  `fancontrol` from the hottest GPU temperature (including an out-of-tree
+  `it87` for Gigabyte boards), and ASPM L1 on the Arc chains only
+  (`scripts/arc-aspm.sh`), which takes an idle A770 from 50-56 C to about
+  40-45 C.
 - **Troubleshooting** — symptom → cause → fix table for the classic failures:
   Secure Boot vs DKMS, "Driver/library version mismatch",
   `could not select device driver "nvidia"`, CUDA OOM, silent CPU fallback.
 
-Scope: **Debian 10–13 and Ubuntu 20.04–24.04, x86_64, NVIDIA GPUs only.**
+Scope: **Debian 10–13 and Ubuntu 20.04–24.04 (26.04 for Intel), x86_64,
+NVIDIA and Intel discrete GPUs.** No AMD/ROCm.
 
 ## Layout
 
 ```
 gpu-server-setup/
-├─ SKILL.md                 # the skill: workflow + hard rules the agent follows
+├─ SKILL.md                 # the skill: workflow, vendor routing, hard rules
 ├─ references/
-│  ├─ nvidia-cuda.md        # driver + CUDA repo, versions, pinning, Secure Boot
-│  ├─ docker-nvidia.md      # Docker Engine, nvidia-ctk, GPU passthrough, /srv layout
-│  ├─ monitoring.md         # nvitop, watch nvidia-smi, power limit (set/verify/persist)
-│  └─ troubleshooting.md    # 3-layer checklist + symptom/cause/fix table
-├─ presets/
-│  ├─ vllm.md               # OpenAI-compatible LLM server, one service per GPU
-│  ├─ infinity.md           # embedding server (+ pinned-deps Dockerfile)
-│  ├─ openwebui.md          # web interface over vLLM/Ollama
-│  └─ ollama.md             # simplest GGUF serving, GPU vs CPU-only
+│  ├─ docker-engine.md      # Docker CE, daemon defaults, /srv layout (both vendors)
+│  ├─ nvidia/
+│  │  ├─ driver-cuda.md     # CUDA repo, driver choice, headers, pinning, Secure Boot
+│  │  ├─ container-toolkit.md  # nvidia-ctk, runtime, GPU passthrough
+│  │  ├─ monitoring.md      # nvitop, power limit (set/verify/persist)
+│  │  └─ troubleshooting.md # 3-layer checklist + symptom/cause/fix table
+│  └─ intel/
+│     ├─ driver.md          # i915/xe, firmware, ReBAR, PCIe links, kernel choice, host tools
+│     ├─ docker.md          # /dev/dri passthrough, render group, card pinning, gates
+│     ├─ stacks.md          # llama.cpp SYCL/Vulkan, Ollama, OpenVINO, vLLM on Arc
+│     ├─ power-cooling.md   # power/clock cap, fans from GPU temperature, ASPM
+│     └─ troubleshooting.md # 3-layer checklist + symptom/cause/fix table
+├─ presets/                 # NVIDIA compose stacks: vllm, infinity, openwebui, ollama
 ├─ scripts/
-│  └─ check.sh              # staged verification: host → docker → services
-├─ tests/
-│  └─ test_check.py         # isolated kernel-readiness regression tests
+│  ├─ check.sh              # staged verification: host → docker → services, both vendors
+│  ├─ arc-power-cap.sh      # persistent power/clock cap for Intel Arc (systemd)
+│  └─ arc-aspm.sh           # ASPM L1 on Intel Arc chains only (systemd)
+├─ tests/                   # fixture tests for the scripts (no GPU or Docker needed)
 ├─ .claude-plugin/ .cursor-plugin/ .codex-plugin/   # agent manifests
 ├─ AGENTS.md  README.md  LICENSE
 ```
@@ -106,17 +127,22 @@ Ask your agent, for example:
 - "Install the NVIDIA driver and CUDA on Debian 12 and wire Docker to the GPU."
 - "nvidia-smi works on the host but containers don't see the GPU — fix it."
 - "Cap every GPU at 250 W and make the limit survive reboots."
+- "Set up this Debian 13 box with two Arc A770 for containers, the cards sit
+  in a tight case, make the cooling more aggressive."
+- "My Arc cards idle at 40 W and 55 C doing nothing, fix it."
 - "Audit this GPU server: what is installed, what is broken?"
 
 Verify a server at any moment:
 
 ```bash
-bash scripts/check.sh
-bash scripts/check.sh http://<SERVER_IP>:8081/health
+sudo bash scripts/check.sh
+sudo bash scripts/check.sh http://<SERVER_IP>:8081/health
+bash scripts/check.sh --vendor intel --no-docker-run
 ```
 
 The checker also fails when a headers metapackage, headers for an installed kernel,
-or its NVIDIA module is missing, even if the running kernel's `nvidia-smi` works.
+or its NVIDIA module (Intel: i915/xe and every DKMS module) is missing, even if the
+running kernel works.
 `--no-docker-run` skips only the container probe, not these checks. It does not install
 headers, build DKMS modules or reboot the machine.
 
@@ -139,5 +165,5 @@ bash -n scripts/check.sh
 
 ## License
 
-MIT © Pavel Rykov. Not affiliated with NVIDIA, Docker Inc., or the vLLM,
-Infinity, OpenWebUI, Ollama projects.
+MIT © Pavel Rykov. Not affiliated with NVIDIA, Intel, Docker Inc., or the vLLM,
+Infinity, OpenWebUI, Ollama, llama.cpp, OpenVINO projects.

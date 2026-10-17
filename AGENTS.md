@@ -17,15 +17,18 @@ their skill source at `./`.
 
 ```
 gpu-server-setup/
-├─ .claude-plugin/
-│  ├─ plugin.json        # Claude Code plugin manifest
-│  └─ marketplace.json   # single-plugin marketplace (plugin lives at "./")
+├─ .claude-plugin/plugin.json    # Claude Code plugin manifest
 ├─ .cursor-plugin/plugin.json    # Cursor manifest
 ├─ .codex-plugin/plugin.json     # Codex manifest (interface block + skills: "./")
 ├─ SKILL.md              # CANONICAL skill: YAML frontmatter + instructions
 ├─ references/           # deep knowledge, loaded on demand from SKILL.md
-├─ presets/              # ready docker-compose stacks (adapt, don't paste verbatim)
-├─ scripts/check.sh      # staged verification script (pure bash)
+│  ├─ docker-engine.md   # vendor-neutral Docker part
+│  ├─ nvidia/            # everything NVIDIA-specific
+│  └─ intel/             # everything Intel Arc-specific
+├─ presets/              # ready docker-compose stacks for NVIDIA (adapt, don't paste verbatim)
+├─ scripts/check.sh      # staged verification script (pure bash), both vendors
+├─ scripts/arc-*.sh      # Intel Arc power cap and ASPM helpers (POSIX sh)
+├─ tests/                # fixture tests for every script
 ├─ README.md  AGENTS.md  LICENSE
 ```
 
@@ -33,27 +36,39 @@ There is no `skills/<name>/` subfolder — the root **is** the skill.
 
 ## Editing rules
 
-- **Keep `SKILL.md` thin.** It holds the workflow, the stage gates, and the hard
-  rules. Depth goes in `references/` and `presets/`. If a section grows past a
+- **Keep `SKILL.md` thin.** It holds the workflow, the vendor routing table,
+  the stage gates, and the hard rules. Depth goes in `references/` and
+  `presets/`. Anything that applies to one vendor lives under
+  `references/<vendor>/`; SKILL.md only points to it. If a section grows past a
   screen, move the detail into a reference and link it.
-- **One package source.** Every install path in this skill uses the official
-  NVIDIA CUDA apt repo + the official Docker repo. Never add instructions that
-  mix distro `nvidia-*` packages, `ubuntu-drivers`, or `.run` installers into
-  the same flow — mixed sources are the #1 support burden this skill exists to
-  prevent.
+- **One package source per vendor.** NVIDIA: the official CUDA apt repo + the
+  official Docker repo; never add instructions that mix distro `nvidia-*`
+  packages, `ubuntu-drivers`, or `.run` installers into the same flow. Intel:
+  kernel and firmware from the distro (same suite), the compute runtime inside
+  the images; never mix PPAs, GitHub `.deb`s and distro packages on one host.
+  Mixed sources are the #1 support burden this skill exists to prevent.
 - **Gates are not optional.** Any edit must preserve the staged verification
-  order (lspci → nvidia-smi → GPU-in-Docker → service health) and the rule that
-  the agent stops on a failing gate.
+  order (lspci → driver gate → GPU-in-Docker → service health) for both vendors
+  and the rule that the agent stops on a failing gate.
+- **A new vendor or GPU family** gets its own `references/<vendor>/` set
+  (driver, docker, stacks, power/cooling, troubleshooting), a column in the
+  SKILL.md routing table, a branch in `check.sh` with fixture tests, and real
+  hardware behind every claim (mark what was only read, not run).
 - **Presets must stay runnable.** They are working configs with
   `<PLACEHOLDER>` tokens for site-specific values (IPs, tokens, models where
   relevant). Never bake in real IPs or secrets. Version numbers in `image:`
   tags are allowed (they document a known-good combination) but prefer noting
   "check for the current release" where staleness bites.
 - **check.sh is pure bash**, no dependencies beyond coreutils/curl/docker. It
-  must stay read-only except the single `docker run … nvidia-smi` gate, must
-  not use `set -e` (it collects failures), and must exit non-zero on any FAIL.
-  After editing run `bash -n scripts/check.sh` and exercise it on a machine
+  must stay read-only except the single container gate per vendor
+  (`nvidia-smi` in ubuntu, `clinfo` in `intel/compute-runtime`), must not use
+  `set -e` (it collects failures), and must exit non-zero on any FAIL. Sysfs
+  and `/dev` are read through `CHECK_SYSFS`/`CHECK_DEVFS` so the tests can use
+  fake trees. After editing run `bash -n scripts/check.sh`,
+  `python3 -m unittest discover -s tests -v`, and exercise it on a machine
   with and without a configured GPU.
+- **`arc-*.sh` are POSIX sh** and take `SYS=` for a fake sysfs in tests; they
+  write only the sysfs knobs they document.
 - **Version drift.** Driver branches, CUDA majors, and image tags in the text
   are examples of a known-good state, not eternal truth. When refreshing them,
   update `nvidia-cuda.md`, the presets, and the README consistently in one
@@ -64,14 +79,13 @@ There is no `skills/<name>/` subfolder — the root **is** the skill.
 When you change the description or bump the version, update it in **all** of:
 
 - `SKILL.md` frontmatter (`version`, `description`)
-- `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`
+- `.claude-plugin/plugin.json`
 - `.cursor-plugin/plugin.json`
 - `.codex-plugin/plugin.json` (both top-level and the `interface` block)
 - `README.md`
 
-Keep the `name` identical everywhere: `gpu-server-setup`. Inside this repo's own
-`.claude-plugin/marketplace.json` both the plugin `version` and the top-level
-`metadata.version` track this skill, so bump both.
+Keep the `name` identical everywhere: `gpu-server-setup`. This repo has no
+marketplace of its own any more; the catalog below is the marketplace.
 
 ## Publishing: mirror every version bump into the `rpa-skills` catalog
 
@@ -107,7 +121,9 @@ python3 -m json.tool .agents/plugins/marketplace.json >/dev/null && echo codex-o
 ## What this skill does NOT do
 
 - It does not manage NVIDIA on Windows/WSL, macOS, RHEL-family, Arch, or NixOS.
-- It does not cover AMD/Intel GPUs, ROCm, or oneAPI.
+- It does not cover AMD GPUs or ROCm, Intel integrated graphics, or oneAPI
+  development on the host (SYCL builds happen in `intel/oneapi-toolkit`
+  containers).
 - It does not do Kubernetes (device plugin, GPU operator) — single-host Docker
   Compose only.
 - It does not benchmark or fine-tune models; it prepares the server and brings
