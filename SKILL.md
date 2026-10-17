@@ -76,15 +76,24 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
    ```bash
    sudo apt update && sudo apt -y upgrade
    sudo apt -y install mc ca-certificates curl gnupg lsb-release wget jq
-   sudo reboot   # matters when the upgrade touched kernel/libc; skip on an already-current box
    ```
+   If the upgrade changes the kernel/libc, prepare headers in stage 1 before
+   an approved reboot. On an existing NVIDIA host, also verify its module for
+   the newly installed kernel first; a working old kernel is not that gate.
 4. **Stage 1 — NVIDIA driver (+ CUDA toolkit only if the host compiles).**
    Follow `references/nvidia-cuda.md`: add the CUDA repo via `cuda-keyring`
-   for the exact `$distro/$arch`, install kernel headers, then the driver —
+   for the exact `$distro/$arch`. **Mandatory prerequisite: install headers
+   for the running kernel AND the matching tracking headers metapackage**
+   (`linux-headers-amd64` on standard Debian amd64; match the kernel flavour
+   on Ubuntu/cloud/RT). Keep the metapackage installed for future upgrades.
+   **GATE: every installed kernel image has usable headers.** Then install the driver —
    open kernel modules for Turing and newer (`nvidia-open` /
    `nvidia-driver-XXX-open`; mandatory for the newest generations),
    proprietary for Pascal and older. Docker-only hosts need **no** CUDA toolkit.
-   Reboot. **GATE: `nvidia-smi` lists every physical GPU.**
+   Before rebooting, build/check NVIDIA DKMS modules for the running and all
+   installed kernels, including a new kernel not running yet. Stop on any
+   missing headers or module. Reboot with approval, reconnect.
+   **GATE: `nvidia-smi` lists every physical GPU.**
 5. **Stage 2 — Docker + NVIDIA Container Toolkit.**
    Follow `references/docker-nvidia.md`: remove legacy docker packages, install
    Docker CE from the official repo, install `nvidia-container-toolkit`, then
@@ -135,6 +144,10 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
   foreign one first (`references/troubleshooting.md`).
 - **Never skip a gate, never continue past a failing one.** Also never declare
   success without the gate output actually shown.
+- **Headers are mandatory, including on Docker-only hosts.** Exact running-kernel
+  headers alone are insufficient: install and retain a matching headers metapackage.
+  Before every kernel-upgrade reboot, verify headers and NVIDIA modules for the
+  installed kernels. A green `nvidia-smi` on the old kernel does not prove the next boot.
 - **Reboot after driver install** and after any kernel/driver upgrade, before
   judging anything broken.
 - **Containers see zero GPUs by default.** Every service gets an explicit
@@ -153,6 +166,7 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
 | Layer | Proven by | Broken? |
 |-------|-----------|---------|
 | hardware | `lspci \| grep -E "VGA\|3D\|NVIDIA"` | BIOS / passthrough, not software |
+| kernel readiness | matching headers metapackage, headers and `modinfo -k <kernel> nvidia` for installed kernels | install missing headers, build DKMS before reboot |
 | driver | `nvidia-smi` (all GPUs, sane driver ver) | Secure Boot, headers/DKMS, reboot |
 | docker+GPU | `docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi` | toolkit, `nvidia-ctk`, restart docker |
 | service | `curl /health`, `/v1/models`, real request | logs, VRAM budget, GPU pin |
@@ -167,7 +181,8 @@ skip the container pull; extra args = health URLs).
 - Skipping `nvidia-ctk runtime configure` or the `systemctl restart docker`
   after it — toolkit installed, runtime still absent.
 - No reboot after driver install, then debugging a "broken" driver.
-- Forgetting kernel headers on minimal installs — DKMS quietly builds nothing.
+- Installing only `linux-headers-$(uname -r)` without the headers metapackage —
+  the next kernel upgrade can leave NVIDIA unbuilt until a power cut exposes it.
 - `image: :latest` in production compose files instead of a pinned tag.
 - `deploy:` block missing → silent CPU fallback that "works" at 1 token/min.
 - Two services on one GPU without lowering `--gpu-memory-utilization`.

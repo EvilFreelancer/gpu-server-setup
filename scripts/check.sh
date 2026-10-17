@@ -13,6 +13,8 @@
 FAILED=0
 DOCKER_RUN_TEST=1
 URLS=()
+PATH="$PATH:/usr/sbin:/sbin"
+export PATH
 
 for arg in "$@"; do
   case "$arg" in
@@ -50,6 +52,59 @@ if command -v nvidia-smi >/dev/null 2>&1; then
 else
   fail "nvidia-smi not found — driver not installed"
 fi
+
+echo "=== Kernel headers and NVIDIA modules (before reboot) ==="
+
+RUNNING_KERNEL=$(uname -r)
+KERNELS=("$RUNNING_KERNEL")
+HEADER_METAS=()
+if command -v dpkg-query >/dev/null 2>&1; then
+  if IMAGE_PACKAGES=$(dpkg-query -W -f='${db:Status-Status} ${Package}\n' 'linux-image-*' 2>/dev/null); then
+    while read -r status package; do
+      [ "$status" = "installed" ] || continue
+      case "$package" in
+        *-dbg|*-dbgsym|*-signed-template|linux-image-extra-*) continue ;;
+        linux-image-unsigned-[0-9]*) KERNELS+=("${package#linux-image-unsigned-}") ;;
+        linux-image-[0-9]*) KERNELS+=("${package#linux-image-}") ;;
+        linux-image-*) HEADER_METAS+=("linux-headers-${package#linux-image-}") ;;
+      esac
+    done <<< "$IMAGE_PACKAGES"
+  else
+    fail "cannot list installed kernel images — check the dpkg database"
+  fi
+  # Debian flavours are explicit; Ubuntu's uname suffix cannot distinguish GA/HWE.
+  if [ "${#HEADER_METAS[@]}" -eq 0 ]; then
+    case "$RUNNING_KERNEL" in
+      *-cloud-amd64) HEADER_METAS=(linux-headers-cloud-amd64) ;;
+      *-rt-amd64) HEADER_METAS=(linux-headers-rt-amd64) ;;
+      *-amd64) HEADER_METAS=(linux-headers-amd64) ;;
+      *) fail "cannot determine headers tracking metapackage — restore the matching kernel image/headers tracking pair; do not guess GA/HWE from uname" ;;
+    esac
+  fi
+  while read -r package; do
+    [ -n "$package" ] || continue
+    if [ "$(dpkg-query -W -f='${db:Status-Status}' "$package" 2>/dev/null)" = "installed" ]; then
+      pass "headers tracking metapackage: $package"
+    else
+      fail "headers tracking metapackage missing: $package — install it for future kernel upgrades"
+    fi
+  done < <(printf '%s\n' "${HEADER_METAS[@]}" | sort -u)
+else
+  fail "dpkg-query not found — cannot verify headers tracking metapackages"
+fi
+
+while read -r kernel; do
+  if readlink -e "/lib/modules/$kernel/build/Makefile" >/dev/null 2>&1; then
+    pass "kernel headers: $kernel"
+  else
+    fail "kernel headers missing for $kernel — install linux-headers-$kernel before rebooting"
+  fi
+  if MODULE=$(modinfo -k "$kernel" -F filename nvidia 2>/dev/null) && [ -n "$MODULE" ]; then
+    pass "NVIDIA module built for $kernel"
+  else
+    fail "NVIDIA module missing for $kernel — fix headers/DKMS before rebooting"
+  fi
+done < <(printf '%s\n' "${KERNELS[@]}" | sort -u)
 
 if command -v nvcc >/dev/null 2>&1; then
   pass "nvcc: $(nvcc --version | grep -o 'release [0-9.]*')"
