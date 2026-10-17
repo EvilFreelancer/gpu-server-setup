@@ -15,6 +15,10 @@ and a production setup runbook for multi-GPU inference servers.
 - **NVIDIA driver + CUDA** — from the official CUDA apt repo (cuda-keyring),
   with the open-vs-proprietary kernel-module choice, driver-only vs toolkit
   decision, multi-CUDA via `update-alternatives`, and version pinning.
+- **Mandatory kernel headers** — exact running-kernel headers plus the tracking
+  metapackage (`linux-headers-amd64` on standard Debian; match the kernel flavour
+  elsewhere), with headers and NVIDIA modules verified for installed kernels
+  before a reboot. A kernel upgrade must not silently disable GPUs on the next boot.
 - **Docker + NVIDIA Container Toolkit** — official Docker Engine install,
   `nvidia-ctk runtime configure`, and explicit GPU passthrough (`--gpus`,
   compose `deploy` blocks, per-service `device_ids` pinning).
@@ -52,6 +56,8 @@ gpu-server-setup/
 │  └─ ollama.md             # simplest GGUF serving, GPU vs CPU-only
 ├─ scripts/
 │  └─ check.sh              # staged verification: host → docker → services
+├─ tests/
+│  └─ test_check.py         # isolated kernel-readiness regression tests
 ├─ .claude-plugin/ .cursor-plugin/ .codex-plugin/   # agent manifests
 ├─ AGENTS.md  README.md  LICENSE
 ```
@@ -107,6 +113,18 @@ Verify a server at any moment:
 ```bash
 bash scripts/check.sh
 bash scripts/check.sh http://<SERVER_IP>:8081/health
+```
+
+The checker also fails when a headers metapackage, headers for an installed kernel,
+or its NVIDIA module is missing, even if the running kernel's `nvidia-smi` works.
+`--no-docker-run` skips only the container probe, not these checks. It does not install
+headers, build DKMS modules or reboot the machine.
+
+Run the isolated command-fixture regression tests locally (no GPU or Docker needed):
+
+```bash
+python3 -m unittest discover -s tests -v
+bash -n scripts/check.sh
 ```
 
 ## Safety

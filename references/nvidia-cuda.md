@@ -30,14 +30,49 @@ sudo apt update
 ls -la /etc/apt/sources.list.d/ | grep cuda    # cuda-$distro-$arch.list must exist
 ```
 
-## 3. Kernel headers (DKMS prerequisite)
+## 3. Mandatory kernel headers (DKMS prerequisite and upgrade protection)
 
-The repo driver builds its kernel module via DKMS. On minimal installs headers
-are often missing and the module silently fails to build:
+The repo driver builds its kernel module via DKMS. **Do not install the driver
+or declare an existing server ready without matching headers.** This also applies
+to Docker-only hosts: containers bring CUDA, not the host's kernel module.
+
+On standard **Debian amd64**, install both the tracking metapackage and the exact
+headers for the running kernel:
 
 ```bash
-sudo apt -y install linux-headers-$(uname -r)   # Debian; Ubuntu: linux-headers-generic
+sudo apt -y install linux-headers-amd64 "linux-headers-$(uname -r)"
+dpkg-query -W -f='${db:Status-Status}\n' linux-headers-amd64  # must be installed
+readlink -e "/lib/modules/$(uname -r)/build/Makefile"         # must exist
 ```
+
+Keep `linux-headers-amd64` explicitly installed. Installing only an exact version
+does not pull headers on later kernel upgrades. Holding the NVIDIA packages does
+not prevent a kernel upgrade from leaving the next boot without a driver module.
+
+On **Ubuntu**, match the installed image metapackage: `linux-image-generic` needs
+`linux-headers-generic`, `linux-image-generic-hwe-24.04` needs
+`linux-headers-generic-hwe-24.04`, and cloud flavours need their corresponding
+headers metapackage (for example `linux-image-aws` / `linux-headers-aws`). Debian
+cloud/RT likewise uses `linux-headers-cloud-amd64` / `linux-headers-rt-amd64`.
+Do not substitute generic headers for a different running flavour. Install exact
+`linux-headers-$(uname -r)` as well, since a metapackage may already point to a newer
+kernel. Detect the image packages rather than guessing:
+
+```bash
+dpkg-query -W -f='${db:Status-Status} ${Package}\n' 'linux-image-*'
+```
+
+If Ubuntu has only exact-version images and no tracking image metapackage,
+`uname -r` alone cannot distinguish GA from HWE. Identify the intended series and
+restore its matching image/headers tracking pair before proceeding; do not guess
+`linux-headers-generic`. The checker fails closed in this ambiguous case.
+
+**Headers gate before driver installation:** for the running kernel and every
+installed versioned image, confirm `/lib/modules/<kernel>/build/Makefile` resolves.
+Install `linux-headers-<kernel>` for any missing entry. Ignore removed images
+(`config-files` / `not-installed`); a new installed image counts even if it has
+never booted. If headers are unavailable, stop and resolve the kernel/repository
+mismatch; do not continue or reboot into that kernel.
 
 ## 4. Install driver (+ CUDA toolkit when needed)
 
@@ -80,7 +115,25 @@ Decisions to make with the user:
   branch; check the release notes when the card is recent. Symptom of too-old
   driver: `nvidia-smi` works but shows `ERR!` or the card is missing.
 
-**Reboot after installing the driver**, then gate:
+**Before rebooting after driver installation or any kernel upgrade**, run this for
+each kernel from the headers gate (replace `<kernel>` with its actual release):
+
+```bash
+sudo dkms autoinstall -k "<kernel>"
+modinfo -k "<kernel>" -F filename nvidia
+modinfo -k "<kernel>" -F version nvidia
+sudo dkms status
+```
+
+**Pre-reboot gate:** the build succeeds and the NVIDIA module exists for every
+installed kernel, including the next boot's kernel. Its version must match the
+installed driver. Stop on build errors; do not assume DKMS hooks succeeded or
+that today's working `nvidia-smi` proves tomorrow's boot. `scripts/check.sh`
+checks the headers metapackage, header files and module presence read-only.
+Do not remove old fallback images just to hide a failing check; coordinate their
+retirement with the owner if they will no longer be maintained.
+
+**Reboot with the user's approval after installing the driver**, then gate:
 
 ```bash
 sudo reboot
