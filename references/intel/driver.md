@@ -20,8 +20,10 @@ sudo lspci -vv -d 8086: | grep -E 'Resizable BAR|BAR 2: current size'
 
 - **Resizable BAR is mandatory.** `BAR 2: current size` must equal the VRAM
   (16GB on an A770 16 GB). Without it only 256 MiB is CPU-visible, model loads
-  crawl and allocations fail; i915 logs `Using a reduced BAR size`. Fix in
-  BIOS: Above 4G Decoding on, Re-Size BAR on, CSM off.
+  crawl, allocations fail and the cards can behave erratically; i915 logs
+  `Using a reduced BAR size`. Fix in BIOS: Above 4G Decoding on, Re-Size BAR
+  on, CSM off (Re-Size BAR needs UEFI boot). Check it before installing
+  anything; `scripts/check.sh` fails on a BAR2 below 1 GiB.
 - **Read the real link on the card's upstream bridge.** An Arc card carries
   its own PCIe switch (`Device 4fa0` upstream, `4fa4` downstream), so the GPU
   function always shows a fake `2.5GT/s x1`. The bridge above it shows what
