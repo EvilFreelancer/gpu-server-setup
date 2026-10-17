@@ -117,7 +117,7 @@ next boot re-runs the unit.
 |---------|------------------|
 | `Provided power limit … is not a valid power limit which should be between X and Y` | target outside the card's range — re-run step 1, pick a value inside, or report the range to the user |
 | `Changing power management limit is not supported` | the card/driver combo does not allow capping (typical for laptop GPUs, some cards on recent drivers) — say so; there is no nvidia-smi workaround |
-| power fields show `N/A` | same as above, or a driver problem — check `references/troubleshooting.md` layer 2 (driver) first |
+| power fields show `N/A` | same as above, or a driver problem — check `troubleshooting.md` layer 1 (driver) first |
 | limit back to default after reboot | the systemd unit is missing, disabled, or failed — `systemctl status nvidia-power-limit` |
 
 **Choosing a value:** for inference, capping to ~70-80 % of the default TGP
