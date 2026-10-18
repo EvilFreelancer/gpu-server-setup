@@ -42,6 +42,7 @@ esac
 pass() { printf 'PASS  %s\n' "$1"; }
 fail() { printf 'FAIL  %s\n' "$1"; FAILED=1; }
 skip() { printf 'SKIP  %s\n' "$1"; }
+warn() { printf 'WARN  %s\n' "$1"; }
 
 # Discrete Intel GPUs: DG1 (4905), Alchemist (56xx), Battlemage (e2xx), Max (0bdx).
 INTEL_ID_RE='\[8086:(4905|56[0-9a-f]{2}|e2[0-9a-f]{2}|0bd[0-9a-f])\]'
@@ -154,6 +155,24 @@ if [ "$CHECK_INTEL" -eq 1 ]; then
       fi
     else
       skip "$slot: dmesg not readable, run as root to check GuC"
+    fi
+    if [ "$DMESG_OK" -eq 1 ] && printf '%s\n' "$DMESG" | grep -F "$slot" | grep -q 'as wedged'; then
+      fail "$slot: the driver declared the card wedged — only a reboot brings it back, see references/intel/troubleshooting.md"
+    fi
+
+    # xe on Alchemist runtime-suspends an idle card after 1 s; on a 2x A770 box that went
+    # together with GuC failures that wedged a card (references/intel/driver.md, 2a).
+    if [ "$drv" = xe ]; then
+      case "$(cat "$dev/device" 2>/dev/null)" in
+        0x56*)
+          pm=$(cat "$dev/power/control" 2>/dev/null)
+          case "$pm" in
+            on) pass "$slot: runtime PM off for Alchemist on xe (power/control=on)" ;;
+            "") skip "$slot: cannot read power/control" ;;
+            *) warn "$slot: Alchemist on xe with runtime PM on (power/control=$pm) — keep it awake, references/intel/driver.md section 2a" ;;
+          esac
+          ;;
+      esac
     fi
   done
 fi
