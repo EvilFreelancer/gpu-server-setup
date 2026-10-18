@@ -82,6 +82,16 @@ services:
   output or crashes with several GPUs, `GGML_SYCL_FA_ONEDNN_MAX_KV=24576` for
   `DEVICE_LOST` at long context.
 - Docs: <https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md>.
+- **Check the answers, not only the speed.** The reorder optimization of
+  ggml-sycl (`GGML_SYCL_ENABLE_OPT`, on by default) breaks some quant mixes on
+  DG2 on both drivers: an unsloth UD-Q4_K_M 27B (Q4_K, Q5_K, Q6_K, Q8_0, IQ4_XS,
+  IQ4_NL, IQ3_S, Q3_K tensors) answers "17*23?" with a string of threes while
+  `llama-bench` reports a fine speed, and whisper.cpp q8_0 models produce garbage
+  the same way. `GGML_SYCL_ENABLE_OPT=0` fixes the output and costs about a third
+  of the decode. Better: a quant made only of Q4_K, Q6_K and Q8_0 (the ggml-org
+  Q4_K_M uploads) is correct with the optimization on; on 2x A770 under xe the
+  ggml-org 27B decodes at 13.2 t/s against 8.3 for the UD one with it off. After
+  every image bump, ask a question with a known answer before trusting a number.
 
 ### Startup time: keep the compiler cache
 
@@ -147,9 +157,19 @@ block with size larger than 4GB`:
   Unified Runtime docs call it `UR_L0_USE_RELAXED_ALLOCATION_LIMITS`, which
   does nothing. On Linux it goes into `environment:`, not `set ...`.
 
-Community numbers on 2x A770 with Qwen3.8-27B Q4_K_M, llama.cpp SYCL layer
-split: prefill about 576 t/s, decode about 14 t/s (xe driver, PCIe 3.0 x8,
-<https://github.com/zhaoyshine/dual-intel-arc-a770-llm-bench>). A second report
+Measured on 2x A770 (one card on PCIe 4.0 x16, one behind the chipset on 3.0 x2,
+layer split, b11706, 1024 tokens in):
+
+| Model | i915, one user decode | xe, one user decode | xe, total out tok/s at 1 / 4 / 8 / 16 users |
+|---|---|---|---|
+| Qwen3.6-35B-A3B Q4_K_M (MoE) | 20.1 t/s | 43.5 t/s | 29 / 23 / 28 / 28.5 |
+| Qwen3.8-27B Q4_K_M, ggml-org | not measured | 13.2 t/s | 10.4 / 21.7 / 20.7 / 18.1 |
+
+Prefill stayed at 440-510 t/s on both drivers. The server does not gain past
+4-8 users; more users only wait longer for the first token, and at 8-16 users a
+few requests fail on both drivers. Community numbers on 2x A770 with the 27B
+Q4_K_M: prefill about 576 t/s, decode about 14 t/s (xe driver, PCIe 3.0 x8,
+<https://github.com/zhaoyshine/dual-intel-arc-a770-llm-bench>); a second report
 measured decode 13.7 t/s on i915 against 18.7 t/s on xe for a 30B Q4_K_S
 (<https://github.com/ggml-org/llama.cpp/discussions/23313>).
 
@@ -223,17 +243,18 @@ FROM vllm/vllm-openai-xpu:v0.31.0
 # repo has no license.
 COPY gdn-plugin /opt/gdn-plugin
 RUN pip install --no-deps --no-build-isolation /opt/gdn-plugin
-ENV VLLM_XPU_USE_SAMPLER_KERNEL=0 ZES_ENABLE_SYSMAN=1 VLLM_WORKER_MULTIPROC_METHOD=spawn \
+# UR_L0_USE_IMMEDIATE_COMMANDLISTS=0: 6.5x faster decode on i915, neutral on xe
+ENV VLLM_XPU_USE_SAMPLER_KERNEL=0 ZES_ENABLE_SYSMAN=1 VLLM_WORKER_MULTIPROC_METHOD=spawn UR_L0_USE_IMMEDIATE_COMMANDLISTS=0 \
     FI_PROVIDER=shm CCL_ATL_SHM=1 CCL_ATL_TRANSPORT=ofi CCL_ZE_IPC_EXCHANGE=sockets CCL_WORKER_COUNT=2
 ```
 
 ```bash
-docker run -d --name vllm-a770 --device /dev/dri -v /dev/dri/by-path:/dev/dri/by-path \
+docker run -d --name vllm-a770 --device /dev/dri -v /dev/dri/by-path:/dev/dri/by-path --cap-add SYS_PTRACE \
   --ipc=host --shm-size 16g -p 8000:8000 -v /srv/models:/models \
   -v vllm-a770-cache:/root/.cache -v vllm-a770-triton:/root/.triton vllm-a770:0.31.0 \
   --model /models/<MODEL>-AWQ-INT4 --pipeline-parallel-size 2 --tensor-parallel-size 1 \
   --dtype float16 --attention-backend TRITON_ATTN --enforce-eager \
-  --limit-mm-per-prompt '{"image":0,"video":0}' --max-model-len 16384 --gpu-memory-utilization 0.92
+  --limit-mm-per-prompt '{"image":0,"video":0}' --max-model-len 16384 --kv-cache-memory-bytes 2G
 ```
 
 - `VLLM_XPU_USE_SAMPLER_KERNEL=0`: the fused sampler needs FP64.
@@ -247,9 +268,42 @@ docker run -d --name vllm-a770 --device /dev/dri -v /dev/dri/by-path:/dev/dri/by
   bottleneck; PP sends a few KB per token.
 - Keep the cache volumes: the first start JIT-compiles SPIR-V and autotunes
   Triton for minutes.
-- Expectation on 2x A770 (Qwen3.8-27B AWQ-INT4, both cards x8, xe driver):
-  PP2 prefill 73 t/s, decode 11.3 t/s, against llama.cpp SYCL 576 t/s and
-  14.2 t/s. vLLM pays off only for many concurrent requests.
+- What the command and the image above carry beyond the reference recipe, each
+  found from a crash or a profile on a 2x A770 box:
+  1. `-v /dev/dri/by-path:/dev/dri/by-path`: oneCCL looks
+     the cards up there, the workers die with `init_device_fds: opendir failed`
+     without it;
+  2. `--cap-add SYS_PTRACE`: oneCCL takes the peer worker's device fd with
+     `pidfd_getfd`; without it every collective fails with
+     `mem_to_ipc_handle: device_fd is invalid value`;
+  3. `--kv-cache-memory-bytes <N>G` instead of `--gpu-memory-utilization`: on
+     i915 the profiler sees the whole card as free after loading and sizes a KV
+     cache the stage cannot hold;
+  4. i915 only: `UR_L0_USE_IMMEDIATE_COMMANDLISTS=0`. Every kernel launch ended in
+     a blocking ioctl, regular command lists cut a 27B decode step from 3.75 s to
+     0.58 s. On xe the setting hardly matters.
+- MoE on Alchemist: the AWQ checkpoints have no working experts path on DG2 (the
+  XPU experts kernel wants Xe2/Xe3, the Triton WNA16 kernel refuses the AutoAWQ
+  layout). A GPTQ checkpoint with `--quantization moe_wna16 --moe-backend triton`
+  runs, once the FP64 router op `topk_softmax` is replaced with the same
+  computation in torch (a few lines in the plugin).
+- Measured on 2x A770 (PP2, 1024 tokens in, 128 out):
+
+  | | i915 | xe |
+  |---|---|---|
+  | Qwen3.8-27B AWQ, one user decode | 1.7 t/s | 8.4 t/s |
+  | 27B, total out at 4 / 8 users | 2.3 / not measured | 6.4 / 7.2 t/s |
+  | 27B, 16 users, 1.5 GB KV per stage | not measured | 8-10 sequences fit, about 1 t/s |
+  | Qwen3.6-35B-A3B GPTQ, one user decode | 0.7 t/s | 2.4 t/s |
+
+  The community reference (decode 11.3 t/s, prefill 73 t/s, xe, both cards x8) is
+  close to the xe number. vLLM does not batch on Alchemist: every added sequence
+  makes the decode step longer, four users share less than twice what one gets,
+  and llama.cpp serves the same 27B faster at every load. Tried on xe without a
+  gain: XPU graphs (`cudagraph_mode: FULL_DECODE_ONLY`, the capture ends in
+  `UR_RESULT_ERROR_DEVICE_LOST`), the newest compute runtime, and switching
+  prefix caching off for the hybrid model. Use vLLM on Alchemist only when its
+  API features matter more than speed.
 
 The archived ipex-llm image (`intelanalytics/ipex-llm-serving-xpu:0.8.3-b19`)
 is vLLM 0.8.3, predates the current GDN models and carries known security
