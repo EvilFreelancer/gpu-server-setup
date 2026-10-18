@@ -269,9 +269,13 @@ class IntelCheckTests(CheckTests):
         for i, slot in enumerate(SLOTS):
             self.fake_card(slot, 128 + i)
 
-    def fake_card(self, slot, minor, driver="i915", bar_mib=16384):
+    def fake_card(self, slot, minor, driver="i915", bar_mib=16384, device="0x56a0", power_control=None):
         dev = self.bin / "sys/bus/pci/devices" / slot
         dev.mkdir(parents=True, exist_ok=True)
+        (dev / "device").write_text(device + "\n")
+        if power_control is not None:
+            (dev / "power").mkdir(exist_ok=True)
+            (dev / "power/control").write_text(power_control + "\n")
         drivers = self.bin / "sys/bus/pci/drivers" / driver
         drivers.mkdir(parents=True, exist_ok=True)
         link = dev / "driver"
@@ -318,6 +322,26 @@ class IntelCheckTests(CheckTests):
     def test_missing_guc_fails(self):
         self.case["dmesg"] = GUC.splitlines()[0] + "\n"
         self.assert_failure(SLOTS[1] + ": no GuC in dmesg")
+
+    def test_wedged_card_fails(self):
+        self.case["dmesg"] = GUC + ("[  826.7] xe %s: [drm] *ERROR* CRITICAL: Xe has declared device %s as wedged.\n"
+                                    % (SLOTS[1], SLOTS[1]))
+        self.assert_failure(SLOTS[1] + ": the driver declared the card wedged")
+
+    def test_alchemist_on_xe_with_runtime_pm_warns_but_passes(self):
+        self.fake_card(SLOTS[0], 128, driver="xe", power_control="auto")
+        self.fake_card(SLOTS[1], 129, driver="xe", power_control="on")
+        result = self.run_check("--no-docker-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WARN  %s: Alchemist on xe with runtime PM on (power/control=auto)" % SLOTS[0], result.stdout)
+        self.assertIn("PASS  %s: runtime PM off for Alchemist on xe" % SLOTS[1], result.stdout)
+
+    def test_runtime_pm_is_not_checked_for_battlemage_or_i915(self):
+        self.fake_card(SLOTS[0], 128, driver="xe", device="0xe20b", power_control="auto")
+        self.fake_card(SLOTS[1], 129, driver="i915", power_control="auto")
+        result = self.run_check("--no-docker-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("runtime PM", result.stdout)
 
     def test_unreadable_dmesg_skips_guc(self):
         self.case["dmesg_denied"] = True

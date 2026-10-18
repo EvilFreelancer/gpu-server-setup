@@ -8,14 +8,20 @@ the readback, persist with a systemd unit.
 
 ## What can and cannot be controlled from Linux
 
-| Knob | i915 (Alchemist) | xe (Battlemage) |
+| Knob | i915 (Alchemist) | xe (Battlemage; Alchemist when force-probed) |
 |---|---|---|
 | Sustained power limit (PL1) | `hwmon/power1_max`, RW, microwatts | `hwmon/power1_max` (card) or `power2_max` (package, DG2 on xe) |
 | Clock cap | `/sys/class/drm/cardN/gt_max_freq_mhz` + `gt_boost_freq_mhz` | `/sys/bus/pci/devices/<bdf>/tile0/gt0/freq0/max_freq` |
 | Undervolt | no | no |
-| GPU temperature | `hwmon/temp1_input` from kernel **6.13** | `temp2_input` from 6.15 |
+| GPU temperature | `hwmon/temp1_input` from kernel **6.13** | `temp2_input` (package) from 6.15, `temp3_input` (VRAM) on DG2 |
+| Energy counter | `hwmon/energy1_input` | `energy2_input`, the package only on DG2: it misses VRAM, fans and VRMs |
 | Fan speed (read) | `hwmon/fan1_input` from kernel 6.12 | `fan1_input`, `fan2_input` from 6.16 |
 | **Fan curve / fan speed (write)** | **no** | not in mainline (Intel patch series adding `pwm*` to xe, 2026, unmerged) |
+
+On xe every hwmon read takes a runtime PM reference and wakes a suspended
+card; a poller (telemetry, `arc-maxtemp` under `fancontrol`) then keeps an idle
+Alchemist card cycling through sleep and wake. Keep such cards awake
+(`driver.md` section 2a).
 
 **The card's own fan curve cannot be changed from Linux.** It lives in the
 card firmware and moves only with firmware updates. A custom curve set in
@@ -269,6 +275,12 @@ sudo systemd-run --on-active=600 /bin/sh -c 'echo default > /sys/module/pcie_asp
 echo 0 | sudo tee /sys/bus/pci/devices/<nic-bdf>/link/l1_aspm
 sudo od -An -tx2 -N2 /sys/bus/pci/devices/<bdf>/config     # 8086 = alive, ffff = card lost
 ```
+
+Under xe, change a card's link only while the card is awake
+(`cat /sys/bus/pci/devices/<bdf>/power/runtime_status` says `active`): writing
+`link/l1_aspm` on the link of a runtime-suspended A770 failed its resume and took
+it off the bus until a reboot. `arc-aspm` at boot did not hit this on the same box;
+with the udev rule of `driver.md` section 2a the cards never suspend at all.
 
 **Measured on 2x A770 (ASRock, B550, kernel 7.2):** idle 50-56 C with the
 card fans cycling became 39-45 C with the card fans stopped; llama.cpp

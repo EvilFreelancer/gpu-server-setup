@@ -14,7 +14,7 @@ description: >
   vendor and a hard gate after every layer; the mandatory deliverable is Docker
   with verified GPU access, serving stacks are optional presets on top.
 metadata:
-  version: 0.3.1
+  version: 0.4.0
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
@@ -63,7 +63,7 @@ stage reads the vendor's reference; mixed hosts run both columns.
 
 | Stage | NVIDIA | Intel Arc |
 |---|---|---|
-| 1 driver | `references/nvidia/driver-cuda.md`: CUDA apt repo, DKMS module, headers metapackage | `references/intel/driver.md`: in-tree i915 (Alchemist) or xe (Battlemage), distro firmware, ReBAR, newer kernel from backports when needed |
+| 1 driver | `references/nvidia/driver-cuda.md`: CUDA apt repo, DKMS module, headers metapackage | `references/intel/driver.md`: in-tree i915 (Alchemist) or xe (Battlemage), distro firmware, ReBAR, newer kernel from backports when needed; xe on Alchemist is faster and less stable (section 2a) |
 | 1 gate | `nvidia-smi` lists every GPU | every card bound to i915/xe, a render node per card in `/dev/dri/by-path`, GuC running, ReBAR = VRAM size |
 | 2 docker | `references/docker-engine.md` + `references/nvidia/container-toolkit.md` | `references/docker-engine.md` + `references/intel/docker.md` (no toolkit, `/dev/dri` devices) |
 | 2 gate | `docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi` | `docker run --rm --device /dev/dri intel/compute-runtime:<tag> clinfo -l` |
@@ -229,6 +229,13 @@ container probe, extra args = health URLs).
   quicker" — the exact mixed-sources knot this skill exists to prevent.
 - Skipping `nvidia-ctk runtime configure` or the `systemctl restart docker`
   after it — toolkit installed, runtime still absent.
+- Running Alchemist on xe with runtime PM on and a hwmon poller: the idle card
+  sleeps and wakes every few seconds; keep it awake with the udev rule
+  (`references/intel/driver.md` section 2a). A wedged xe card needs a reboot,
+  not a driver rebind.
+- Trusting a SYCL benchmark without checking the answer: the reorder
+  optimization of ggml-sycl turns some quants into garbage at full speed
+  (`references/intel/stacks.md`).
 - Installing the Intel compute runtime, oneAPI or xpu-smi on a Docker-only
   host "to be safe": nothing uses it, and on Debian it means a second source.
 - Bringing up Intel Arc with Resizable BAR or Above 4G Decoding off in the

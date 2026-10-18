@@ -25,7 +25,10 @@ part comes from bringing up a dual Arc A770 server on Debian 13 in 2026.
   trixie-backports kernel when the host must see GPU temperatures, Docker
   access through `/dev/dri` render nodes with no toolkit, and a field-tested
   map of what serves on Arc today: llama.cpp SYCL/Vulkan, Ollama, OpenVINO
-  Model Server, vLLM on Battlemage and a no-build vLLM recipe for the A770.
+  Model Server, vLLM on Battlemage and a no-build vLLM recipe for the A770,
+  plus measured i915 against xe on a pair of A770: what the force-probed xe
+  driver gives (up to 5x for vLLM, 2x for llama.cpp) and what it costs (a card
+  that can wedge until a reboot, runtime PM to switch off).
 - **Docker + NVIDIA Container Toolkit** — official Docker Engine install,
   `nvidia-ctk runtime configure`, and explicit GPU passthrough (`--gpus`,
   compose `deploy` blocks, per-service `device_ids` pinning).
@@ -142,7 +145,8 @@ bash scripts/check.sh --vendor intel --no-docker-run
 
 The checker also fails when a headers metapackage, headers for an installed kernel,
 or its NVIDIA module (Intel: i915/xe and every DKMS module) is missing, even if the
-running kernel works.
+running kernel works. On Intel it also fails on a card the driver declared wedged and
+warns when an Alchemist card on xe still has runtime PM on.
 `--no-docker-run` skips only the container probe, not these checks. It does not install
 headers, build DKMS modules or reboot the machine.
 
