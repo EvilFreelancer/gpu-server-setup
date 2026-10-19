@@ -16,7 +16,7 @@ docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 docker ps
 curl -s http://<SERVER_IP>:8081/health
 curl -s http://<SERVER_IP>:8081/v1/models | jq
-cd /srv/<service> && docker compose logs -f
+cd /opt/containers/<service> && docker compose logs -f
 ```
 
 `scripts/check.sh` in this skill runs layers 1–2 (and optional health URLs)

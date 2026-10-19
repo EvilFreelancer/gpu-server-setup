@@ -7,23 +7,29 @@ fill every `<PLACEHOLDER>`, drop flags that don't apply to your model.
 ## Folders
 
 ```bash
-sudo mkdir -pv /srv/vllm/vllm_data
+sudo mkdir -pv /opt/containers/vllm/models
 # uid shift only matters when Docker userns-remap is enabled; harmless otherwise
-sudo chown 100000:100000 /srv/vllm/vllm_data
+sudo chown 100000:100000 /opt/containers/vllm/models
 ```
 
-## `/srv/vllm/docker-compose.yaml`
+## `/opt/containers/vllm/docker-compose.yaml`
 
 Working two-GPU example: a big model on GPU 0, a smaller one on GPU 1. For a
 single GPU keep only one service.
 
 ```yaml
+# vllm: <MODEL_NAME> on GPU 0 (and <MODEL_NAME_2> on GPU 1) behind the OpenAI API
+#   8000, 8001  /v1/chat/completions, /v1/models, /health
+# Run:    docker compose up -d
+# Check:  curl -s localhost:8000/v1/models
+# Folder: models/ = HF cache and compile cache (weights download here on the first start)
+
 services:
   gpt-oss-120b:
     image: vllm/vllm-openai:v0.17.0
     restart: always
     volumes:
-      - ./vllm_data:/root/.cache          # model + compile cache, survives restarts
+      - ./models:/root/.cache          # model + compile cache, survives restarts
     entrypoint: vllm
     command: >
       serve openai/gpt-oss-120b
@@ -63,7 +69,7 @@ services:
     image: vllm/vllm-openai:v0.17.0
     restart: always
     volumes:
-      - ./vllm_data:/root/.cache
+      - ./models:/root/.cache
     entrypoint: vllm
     command: >
       serve Qwen/Qwen3.5-27B
@@ -125,7 +131,7 @@ Multi-GPU for ONE big model: put both ids in `device_ids: [ "0", "1" ]` and set
 ## Run and verify
 
 ```bash
-cd /srv/vllm
+cd /opt/containers/vllm
 docker compose pull
 docker compose up -d
 docker compose logs -f        # wait for "Application startup complete"
@@ -133,7 +139,7 @@ docker compose logs -f        # wait for "Application startup complete"
 
 First start is slow twice: the image pull is ~10 GB compressed (~30 GB
 unpacked) and can outlast the model download, then the model itself lands in
-`vllm_data`. Watch the logs, do not assume failure early.
+`models/`. Watch the logs, do not assume failure early.
 
 ```bash
 curl -s http://<SERVER_IP>:8081/health          # empty 200 = alive

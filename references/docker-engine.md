@@ -83,12 +83,33 @@ or per service.
 
 ## 4. Service layout convention
 
-One service = one folder under `/srv` with its compose file and data dir:
+One service = one folder `/opt/containers/<service>/` holding everything
+the service keeps on disk:
 
 ```
-/srv/<service>/
-├─ docker-compose.yaml
-└─ <service>_data/          # caches, models, state — survives container recreation
+/opt/containers/<service>/
+├─ docker-compose.yaml      # opens with a header, see below
+├─ .env                     # optional knobs; never commit it when it holds secrets
+├─ models/                  # weights and model caches
+└─ <state>/                 # compiler caches, app data
+```
+
+Weights, caches and state live inside the folder and are mounted by relative
+paths (`./models:/root/.cache`), never by absolute host paths, so the folder
+moves to another machine as one piece: stop the stack, copy the folder,
+`docker compose up -d`. Keep `models/` out of git. A stack that is a checkout
+of an upstream repository (a server with its own Dockerfile) is cloned into
+that folder, and only the local `docker-compose.yaml` and `.env` are added.
+
+The compose file opens with a short header, so whoever opens the folder knows
+what runs there without reading anything else:
+
+```yaml
+# vllm: Qwen3-32B on GPU 0 behind the OpenAI API
+#   8000  /v1/chat/completions, /v1/models, /health
+# Run:    docker compose up -d
+# Check:  curl -s localhost:8000/v1/models
+# Folder: models/ = HF cache and compile cache
 ```
 
 Always cap logs in every service, or json logs eat the disk over weeks:

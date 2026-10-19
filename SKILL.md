@@ -14,7 +14,7 @@ description: >
   vendor and a hard gate after every layer; the mandatory deliverable is Docker
   with verified GPU access, serving stacks are optional presets on top.
 metadata:
-  version: 0.4.0
+  version: 0.5.0
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
@@ -137,7 +137,7 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
      `--device /dev/dri/renderD*`. Add the operator to `render`.
      **GATE: `clinfo -l` in `intel/compute-runtime` lists every card.**
 6. **Stage 3 — serving stack (optional, only when requested).** One service
-   per folder under `/srv`, one GPU pin per service (NVIDIA `device_ids`;
+   per folder `/opt/containers/<service>` with its weights inside, one GPU pin per service (NVIDIA `device_ids`;
    Intel `ONEAPI_DEVICE_SELECTOR` or a single render node). NVIDIA: start from
    `presets/`. Intel: `references/intel/stacks.md` (CUDA presets do not apply).
    Pinned image tags, telemetry off, logs capped, every `<PLACEHOLDER>` filled.
@@ -255,7 +255,7 @@ container probe, extra args = health URLs).
 
 ## Files
 
-- `references/docker-engine.md` — Docker CE, daemon defaults, `/srv` layout (both vendors)
+- `references/docker-engine.md` — Docker CE, daemon defaults, `/opt/containers` layout (both vendors)
 - `references/nvidia/driver-cuda.md` — CUDA repo, driver choice, headers, pinning, Secure Boot
 - `references/nvidia/container-toolkit.md` — toolkit, runtime, GPU passthrough
 - `references/nvidia/monitoring.md` — nvitop, power limit (set / verify / persist)

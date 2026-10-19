@@ -11,13 +11,19 @@ the LLM's `--gpu-memory-utilization` to leave room, or give Infinity its own GPU
 ## Folders
 
 ```bash
-sudo mkdir -pv /srv/infinity/infinity_data
-sudo mkdir -pv /srv/infinity/infinity
+sudo mkdir -pv /opt/containers/infinity/models
+sudo mkdir -pv /opt/containers/infinity/infinity
 ```
 
-## `/srv/infinity/docker-compose.yaml`
+## `/opt/containers/infinity/docker-compose.yaml`
 
 ```yaml
+# infinity: embedding and reranker models behind an OpenAI-compatible API
+#   7997  /embeddings, /models, /health
+# Run:    docker compose up -d --build
+# Check:  curl -s localhost:7997/health
+# Folder: infinity/ = the image recipe, models/ = HF cache with the weights
+
 services:
   infinity:
     # image: michaelf34/infinity:0.0.77       # plain image, when no pin-fixes needed
@@ -38,7 +44,7 @@ services:
       - INFINITY_ANONYMOUS_USAGE_STATS=0
       - INFINITY_DISABLE_OPTIMUM=1
     volumes:
-      - ./infinity_data:/app/.cache
+      - ./models:/app/.cache
     ports:
       - "7997:7997"
     deploy:
@@ -54,7 +60,7 @@ services:
         max-size: "100k"
 ```
 
-## `/srv/infinity/infinity/Dockerfile`
+## `/opt/containers/infinity/infinity/Dockerfile`
 
 Needed only when the stock image's HF stack is too old for the model (e.g.
 `transformers` without qwen3 support). Otherwise use the `image:` line and skip
@@ -79,7 +85,7 @@ RUN /app/.venv/bin/python -c "import transformers, huggingface_hub; print('trans
 ## Run and verify
 
 ```bash
-cd /srv/infinity
+cd /opt/containers/infinity
 docker compose build
 docker compose up -d
 docker compose logs -f
@@ -96,7 +102,7 @@ curl -s http://<SERVER_IP>:7997/embeddings \
 Dependency/image update:
 
 ```bash
-cd /srv/infinity
+cd /opt/containers/infinity
 docker compose down
 docker compose build --no-cache
 docker compose up -d
