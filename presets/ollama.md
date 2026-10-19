@@ -7,18 +7,24 @@ canonical minimal example of GPU passthrough in compose.
 ## Folders
 
 ```bash
-sudo mkdir -pv /srv/ollama/ollama_data
+sudo mkdir -pv /opt/containers/ollama/models
 ```
 
-## `/srv/ollama/docker-compose.yaml`
+## `/opt/containers/ollama/docker-compose.yaml`
 
 ```yaml
+# ollama: Ollama with its GGUF models
+#   11434  /api/*, OpenAI-compatible /v1/*
+# Run:    docker compose up -d && docker compose exec ollama ollama pull <MODEL>
+# Check:  curl -s localhost:11434/api/tags
+# Folder: models/ = the pulled models (/root/.ollama)
+
 services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
     volumes:
-      - ./ollama_data:/root/.ollama       # downloaded models live here
+      - ./models:/root/.ollama       # downloaded models live here
     ports:
       - "11434:11434"
     # Remove the deploy block below and you get the CPU-only variant
@@ -38,7 +44,7 @@ services:
 ## Run and verify
 
 ```bash
-cd /srv/ollama
+cd /opt/containers/ollama
 docker compose pull
 docker compose up -d
 

@@ -6,15 +6,21 @@ needs no GPU pinning.
 ## Folders
 
 ```bash
-sudo mkdir -pv /srv/openwebui/open-webui_data
-sudo chown 100000:100000 /srv/openwebui/open-webui_data
+sudo mkdir -pv /opt/containers/openwebui/open-webui_data
+sudo chown 100000:100000 /opt/containers/openwebui/open-webui_data
 ```
 
 Factory reset later = stop the container, delete `open-webui_data/`, start again.
 
-## `/srv/openwebui/docker-compose.yaml`
+## `/opt/containers/openwebui/docker-compose.yaml`
 
 ```yaml
+# openwebui: OpenWebUI chat on top of an OpenAI-compatible backend
+#   3000  the web UI
+# Run:    docker compose up -d
+# Check:  curl -s -o /dev/null -w '%{http_code}' localhost:3000
+# Folder: open-webui_data/ = users, chats and settings (delete it for a factory reset)
+
 services:
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.8.5
@@ -50,7 +56,7 @@ Key points:
 ## Run and verify
 
 ```bash
-cd /srv/openwebui
+cd /opt/containers/openwebui
 docker compose pull
 docker compose up -d
 docker compose logs -f

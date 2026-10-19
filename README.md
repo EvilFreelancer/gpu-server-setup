@@ -64,7 +64,7 @@ NVIDIA and Intel discrete GPUs.** No AMD/ROCm.
 gpu-server-setup/
 ├─ SKILL.md                 # the skill: workflow, vendor routing, hard rules
 ├─ references/
-│  ├─ docker-engine.md      # Docker CE, daemon defaults, /srv layout (both vendors)
+│  ├─ docker-engine.md      # Docker CE, daemon defaults, /opt/containers layout (both vendors)
 │  ├─ nvidia/
 │  │  ├─ driver-cuda.md     # CUDA repo, driver choice, headers, pinning, Secure Boot
 │  │  ├─ container-toolkit.md  # nvidia-ctk, runtime, GPU passthrough

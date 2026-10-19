@@ -52,7 +52,7 @@ x-sycl: &sycl
   image: ghcr.io/ggml-org/llama.cpp:server-intel-b11706
   devices: ["/dev/dri:/dev/dri"]
   volumes:
-    - /srv/models:/models:ro
+    - ./models:/models:ro
     - ./sycl_cache:/root/.cache          # NEO compiler cache: 80 s -> 6 s restarts, see below
   restart: unless-stopped
   logging: {driver: json-file, options: {max-size: "100k"}}
@@ -187,7 +187,7 @@ services:
     image: ollama/ollama:0.40.6
     devices: ["/dev/dri:/dev/dri"]
     environment: {GGML_VK_VISIBLE_DEVICES: "0,1"}    # OLLAMA_VULKAN=0 turns Vulkan off
-    volumes: ["./ollama_data:/root/.ollama"]
+    volumes: ["./models:/root/.ollama"]
     ports: ["11434:11434"]
     restart: unless-stopped
 ```
@@ -204,7 +204,7 @@ services:
     user: "1000:1000"
     group_add: ["<RENDER_GID>"]
     devices: ["/dev/dri:/dev/dri"]
-    volumes: ["./ovms_data:/models:rw"]
+    volumes: ["./models:/models:rw"]
     command: ["--source_model", "OpenVINO/<MODEL>-int4-ov", "--model_repository_path", "/models",
               "--rest_port", "8000", "--target_device", "GPU.0"]
     ports: ["8000:8000"]
@@ -250,7 +250,7 @@ ENV VLLM_XPU_USE_SAMPLER_KERNEL=0 ZES_ENABLE_SYSMAN=1 VLLM_WORKER_MULTIPROC_METH
 
 ```bash
 docker run -d --name vllm-a770 --device /dev/dri -v /dev/dri/by-path:/dev/dri/by-path --cap-add SYS_PTRACE \
-  --ipc=host --shm-size 16g -p 8000:8000 -v /srv/models:/models \
+  --ipc=host --shm-size 16g -p 8000:8000 -v /opt/containers/vllm-a770/models:/models \
   -v vllm-a770-cache:/root/.cache -v vllm-a770-triton:/root/.triton vllm-a770:0.31.0 \
   --model /models/<MODEL>-AWQ-INT4 --pipeline-parallel-size 2 --tensor-parallel-size 1 \
   --dtype float16 --attention-backend TRITON_ATTN --enforce-eager \

@@ -48,5 +48,5 @@ installed kernel.
 | service "hangs" on first start | weights downloading, or SPIR-V JIT and Triton autotune (vLLM) | watch logs; keep the cache volumes so the next start is fast |
 | llama.cpp SYCL needs about 80 s to answer `/health` after every restart | JIT compilation of the SYCL kernels, the compiler cache dies with the container | mount `/root/.cache` as a volume (`stacks.md`); or an AOT build for the card's architecture |
 | `can't allocate 5000000000 Bytes of memory on device`, `can NOT allocate memory block with size larger than 4GB` | the ~4 GiB single-allocation limit of Intel GPUs | `UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS=1` for that service (not `..._USE_...`); the official llama.cpp image does not need it, AOT builds of llama.cpp do |
-| model loads take minutes | HDD root disk, a 16 GB image plus the weights | put `/srv/models` and Docker's data on SSD/NVMe when there is one |
+| model loads take minutes | HDD root disk, a 16 GB image plus the weights | put `/opt/containers` and Docker's data on SSD/NVMe when there is one |
 | `mei ... Could not read FW version` in dmesg | partner-card GSC quirk | harmless for compute |

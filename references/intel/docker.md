@@ -114,5 +114,5 @@ Keep `ZES_ENABLE_SYSMAN=1` in SYCL and Level Zero services: without it the
 runtime cannot report free VRAM, and some loaders mis-size their buffers.
 
 Cap logs in every service (`logging:` block or the daemon defaults in
-`../docker-engine.md`), one folder per service under `/srv`, image tags
+`../docker-engine.md`), one folder per service, `/opt/containers/<service>` with its weights inside, image tags
 pinned.
