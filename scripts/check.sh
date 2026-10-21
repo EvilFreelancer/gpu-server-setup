@@ -327,6 +327,55 @@ if command -v docker >/dev/null 2>&1; then
       fail "no Intel render nodes to pass into a container"
     fi
   fi
+
+  # Vendor telemetry of the running serving stacks (references/telemetry.md).
+  # Reads only the names and values of the switches below, never other variables.
+  TELEMETRY_SEEN=0
+  has() { printf '%s\n' "$cenv" | grep -qxE "$1"; }   # one full KEY=VALUE line of the container
+  while IFS='|' read -r cname cimage; do
+    [ -n "$cname" ] || continue
+    cenv=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cname" 2>/dev/null)
+    chead=$(docker inspect --format '{{join .Config.Entrypoint " "}} {{join .Config.Cmd " "}}' "$cname" 2>/dev/null | cut -c1-200)
+    kind=""
+    case "$cimage $chead" in
+      *router*) kind="" ;;                       # vllm-router and friends are not engines
+      *open-webui*) kind=openwebui ;;
+      *infinity*) kind=infinity ;;
+      *vllm*) kind=vllm ;;
+      *) printf '%s\n' "$cenv" | grep -q '^VLLM_' && kind=vllm ;;
+    esac
+    [ -n "$kind" ] || continue
+    TELEMETRY_SEEN=$((TELEMETRY_SEEN + 1))
+    case "$kind" in
+      vllm)
+        # vLLM compares with "1" only: DO_NOT_TRACK=true does not silence it
+        if has 'VLLM_NO_USAGE_STATS=1' || has '(VLLM_)?DO_NOT_TRACK=1'; then
+          pass "telemetry: $cname (vLLM) has its usage stats off"
+        elif docker exec "$cname" sh -c 'test -e /root/.config/vllm/do_not_track || test -e "$HOME/.config/vllm/do_not_track"' >/dev/null 2>&1; then
+          warn "telemetry: $cname (vLLM) is silent only through the do_not_track file, a recreated container reports again — set VLLM_NO_USAGE_STATS=1 and DO_NOT_TRACK=1"
+        else
+          fail "telemetry: $cname (vLLM) reports to stats.vllm.ai — set VLLM_NO_USAGE_STATS=1 and DO_NOT_TRACK=1"
+        fi ;;
+      infinity)
+        if has 'INFINITY_ANONYMOUS_USAGE_STATS=(0|false|False)' || has 'DO_NOT_TRACK=(1|true|True)'; then
+          pass "telemetry: $cname (Infinity) has its usage stats off"
+        else
+          fail "telemetry: $cname (Infinity) reports to PostHog — set INFINITY_ANONYMOUS_USAGE_STATS=0 and DO_NOT_TRACK=1"
+        fi ;;
+      openwebui)
+        missing=""
+        has 'SCARF_NO_ANALYTICS=(true|True)' || missing="$missing SCARF_NO_ANALYTICS=true"
+        has 'DO_NOT_TRACK=(true|True|1)' || missing="$missing DO_NOT_TRACK=true"
+        has 'ANONYMIZED_TELEMETRY=(false|False)' || missing="$missing ANONYMIZED_TELEMETRY=false"
+        has '(ENABLE_VERSION_UPDATE_CHECK=(false|False)|OFFLINE_MODE=(true|True))' || missing="$missing ENABLE_VERSION_UPDATE_CHECK=false"
+        if [ -z "$missing" ]; then
+          pass "telemetry: $cname (OpenWebUI) has analytics and the update check off"
+        else
+          fail "telemetry: $cname (OpenWebUI) calls its vendors — set$missing"
+        fi ;;
+    esac
+  done < <(docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null)
+  [ "$TELEMETRY_SEEN" -eq 0 ] && skip "telemetry: no vLLM, Infinity or OpenWebUI container running"
 else
   fail "docker not found"
 fi

@@ -39,6 +39,10 @@ For embeddings on Arc use OVMS `--task embeddings` or llama.cpp `--embedding`.
   `group_add: ["<RENDER_GID>"]` from `stat -c %g /dev/dri/renderD128`.
 - `ZES_ENABLE_SYSMAN=1` in SYCL/Level Zero services, so the runtime can read
   free VRAM.
+- Vendor telemetry off as `../telemetry.md` says: every vLLM image (upstream XPU,
+  `llm-scaler`, the A770 recipe below) gets `VLLM_NO_USAGE_STATS=1` and
+  `DO_NOT_TRACK=1`; llama.cpp, whisper.cpp and Ollama need no switch, OpenVINO
+  Model Server is checked before it goes live.
 - One service per card, pinned (`ONEAPI_DEVICE_SELECTOR=level_zero:<N>` or a
   single render node). Splitting one model across cards costs PCIe bandwidth:
   check where each card sits first (`lspci -tv`, link width in `driver.md`).
@@ -245,7 +249,8 @@ COPY gdn-plugin /opt/gdn-plugin
 RUN pip install --no-deps --no-build-isolation /opt/gdn-plugin
 # UR_L0_USE_IMMEDIATE_COMMANDLISTS=0: 6.5x faster decode on i915, neutral on xe
 ENV VLLM_XPU_USE_SAMPLER_KERNEL=0 ZES_ENABLE_SYSMAN=1 VLLM_WORKER_MULTIPROC_METHOD=spawn UR_L0_USE_IMMEDIATE_COMMANDLISTS=0 \
-    FI_PROVIDER=shm CCL_ATL_SHM=1 CCL_ATL_TRANSPORT=ofi CCL_ZE_IPC_EXCHANGE=sockets CCL_WORKER_COUNT=2
+    FI_PROVIDER=shm CCL_ATL_SHM=1 CCL_ATL_TRANSPORT=ofi CCL_ZE_IPC_EXCHANGE=sockets CCL_WORKER_COUNT=2 \
+    VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1
 ```
 
 ```bash
