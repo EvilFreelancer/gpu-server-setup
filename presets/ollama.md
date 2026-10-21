@@ -54,6 +54,9 @@ curl -s http://<SERVER_IP>:11434/api/generate \
   -d '{"model":"qwen3:8b","prompt":"ping","stream":false}' | jq -r .response
 ```
 
+Ollama has no usage reporting of its own, so it needs no telemetry switch
+(`references/telemetry.md`).
+
 While a prompt is running, `nvidia-smi` on the host must show the `ollama`
 process using GPU memory — that is the proof the GPU is actually used (CPU-only
 fallback is silent otherwise).

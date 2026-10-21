@@ -34,6 +34,12 @@ services:
       OPENAI_API_BASE_URL: http://<SERVER_IP>:8081/v1
       OPENAI_API_KEY: ~
       ENABLE_PERSISTENT_CONFIG: True
+      # vendor telemetry off (references/telemetry.md): the image defaults the first
+      # three, the release check against api.github.com stays on without the fourth
+      SCARF_NO_ANALYTICS: "true"
+      DO_NOT_TRACK: "true"
+      ANONYMIZED_TELEMETRY: "false"
+      ENABLE_VERSION_UPDATE_CHECK: "false"
     logging:
       driver: "json-file"
       options:
@@ -52,6 +58,8 @@ Key points:
 - `OPENAI_API_KEY: ~` is YAML null — fine for an unauthenticated vLLM; put a
   real key there when the backend enforces one.
 - UI is served on port 80 → `http://<SERVER_IP>/`.
+- The four telemetry variables keep Scarf and Chroma analytics and the release
+  check off; `scripts/check.sh` fails the container without them.
 
 ## Run and verify
 

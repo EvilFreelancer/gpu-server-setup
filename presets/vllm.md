@@ -122,7 +122,7 @@ services:
 | `--trust-remote-code` | needed by models with custom code; mention it to the user, it executes repo code |
 | `LD_LIBRARY_PATH` | workaround: some GPUs (seen on RTX 6000 Blackwell) fail to find driver libs inside the container without it |
 | `NCCL_IGNORE_DISABLED_P2P=1` | avoids NCCL init failures on consumer boards without P2P |
-| `VLLM_NO_USAGE_STATS`, `DO_NOT_TRACK` | telemetry off |
+| `VLLM_NO_USAGE_STATS`, `DO_NOT_TRACK` | vendor telemetry off: no report to `stats.vllm.ai` at start and every 10 minutes; the value must be `"1"`, `true` does not work (`references/telemetry.md`) |
 | gated models | add `HF_TOKEN: <HF_TOKEN>` to `environment` (Llama, Gemma, …) |
 
 Multi-GPU for ONE big model: put both ids in `device_ids: [ "0", "1" ]` and set

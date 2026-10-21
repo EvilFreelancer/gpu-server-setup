@@ -14,7 +14,7 @@ description: >
   vendor and a hard gate after every layer; the mandatory deliverable is Docker
   with verified GPU access, serving stacks are optional presets on top.
 metadata:
-  version: 0.5.0
+  version: 0.6.0
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
@@ -140,7 +140,8 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
    per folder `/opt/containers/<service>` with its weights inside, one GPU pin per service (NVIDIA `device_ids`;
    Intel `ONEAPI_DEVICE_SELECTOR` or a single render node). NVIDIA: start from
    `presets/`. Intel: `references/intel/stacks.md` (CUDA presets do not apply).
-   Pinned image tags, telemetry off, logs capped, every `<PLACEHOLDER>` filled.
+   Pinned image tags, vendor telemetry off with the switches of
+   `references/telemetry.md`, logs capped, every `<PLACEHOLDER>` filled.
    **GATE: health endpoint answers AND a real request returns a sane
    response** (`/v1/models`, then one chat/embedding call), and the GPU is
    busy while it answers (`nvidia-smi` / `intel_gpu_top`).
@@ -150,6 +151,8 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
    sudo bash scripts/check.sh                                  # base: host + docker
    sudo bash scripts/check.sh http://<SERVER_IP>:8081/health   # + each service
    ```
+   The same run fails a vLLM, Infinity or OpenWebUI container that still reports
+   to its vendor.
    Deliver: what was installed (versions), the service map (service → GPU →
    port → URL; only when stacks exist), remaining `<PLACEHOLDERS>`, and the
    warnings that apply (auth off, ports exposed, driver hold, out-of-tree
@@ -221,7 +224,8 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
 
 `scripts/check.sh` runs the whole column top-to-bottom for the detected
 vendor (`--vendor nvidia|intel` to force, `--no-docker-run` to skip the
-container probe, extra args = health URLs).
+container probe, extra args = health URLs), then checks the vendor telemetry
+switches of the running vLLM, Infinity and OpenWebUI containers.
 
 ## Common mistakes
 
@@ -251,11 +255,13 @@ container probe, extra args = health URLs).
 - `image: :latest` in production compose files instead of a pinned tag.
 - Missing GPU grant → silent CPU fallback that "works" at 1 token/min.
 - Two services on one GPU without lowering their memory budget.
-- Leaving telemetry on and logs uncapped (json logs eat the disk in weeks).
+- Leaving vendor telemetry on (vLLM wants `DO_NOT_TRACK=1`, `true` does not silence
+  it) and logs uncapped (json logs eat the disk in weeks).
 
 ## Files
 
 - `references/docker-engine.md` — Docker CE, daemon defaults, `/opt/containers` layout (both vendors)
+- `references/telemetry.md` — vendor telemetry switches of the stacks, how to check them
 - `references/nvidia/driver-cuda.md` — CUDA repo, driver choice, headers, pinning, Secure Boot
 - `references/nvidia/container-toolkit.md` — toolkit, runtime, GPU passthrough
 - `references/nvidia/monitoring.md` — nvitop, power limit (set / verify / persist)

@@ -46,6 +46,19 @@ elif name == "docker":
         print("Docker version fixture")
     elif args == ["info"]:
         print("Runtimes: io.containerd.runc.v2 nvidia runc")
+    elif args[:1] == ["ps"]:
+        for c in case.get("containers", []):
+            print(c["name"] + "|" + c["image"])
+    elif args[:1] in (["inspect"], ["exec"]):
+        name = args[-1] if args[0] == "inspect" else args[1]
+        c = next(c for c in case.get("containers", []) if c["name"] == name)
+        if args[0] == "exec":
+            sys.exit(0 if c.get("dnt_file") else 1)
+        if ".Config.Env" in args[args.index("--format") + 1]:
+            for e in c.get("env", []):
+                print(e)
+        else:
+            print(" ".join(c.get("entrypoint", [])) + " " + " ".join(c.get("cmd", [])))
     elif args and args[0] == "run":
         if "clinfo" in args:
             print("Platform #0: Intel(R) OpenCL Graphics")
@@ -244,6 +257,64 @@ class CheckTests(unittest.TestCase):
         ])
         result = self.run_check("--no-docker-run")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def engine(self, name, image, env=(), **extra):
+        self.case.setdefault("containers", []).append(
+            dict(name=name, image=image, env=list(env), **extra))
+
+    def check_ok(self, message):
+        result = self.run_check("--no-docker-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(message, result.stdout)
+        return result
+
+    def test_no_serving_containers_skip_telemetry(self):
+        self.check_ok("SKIP  telemetry: no vLLM, Infinity or OpenWebUI container running")
+
+    def test_vllm_without_switches_fails(self):
+        self.engine("qwen", "vllm/vllm-openai:v0.19.0", ["VLLM_USAGE_SOURCE=production-docker-image"])
+        self.assert_failure("FAIL  telemetry: qwen (vLLM) reports to stats.vllm.ai")
+
+    def test_vllm_with_switches_passes(self):
+        self.engine("qwen", "vllm/vllm-openai:v0.19.0", ["VLLM_NO_USAGE_STATS=1", "DO_NOT_TRACK=1"])
+        self.check_ok("PASS  telemetry: qwen (vLLM) has its usage stats off")
+
+    def test_vllm_ignores_do_not_track_true(self):
+        # vLLM compares the value with "1"; "true" leaves the reports on
+        self.engine("qwen", "vllm/vllm-openai:v0.19.0", ["DO_NOT_TRACK=true"])
+        self.assert_failure("FAIL  telemetry: qwen (vLLM) reports to stats.vllm.ai")
+
+    def test_vllm_silenced_only_by_file_warns(self):
+        self.engine("qwen", "vllm-local:1", dnt_file=True)
+        self.check_ok("WARN  telemetry: qwen (vLLM) is silent only through the do_not_track file")
+
+    def test_vllm_recognised_by_its_variables(self):
+        self.engine("embed", "embed-xpu:local", ["VLLM_TARGET_DEVICE=xpu"])
+        self.assert_failure("FAIL  telemetry: embed (vLLM) reports to stats.vllm.ai")
+
+    def test_router_is_not_an_engine(self):
+        self.engine("lb", "qwen-router:1", entrypoint=["vllm-router"])
+        self.check_ok("SKIP  telemetry: no vLLM, Infinity or OpenWebUI container running")
+
+    def test_infinity_switch_passes(self):
+        self.engine("emb", "michaelf34/infinity:0.0.77", ["INFINITY_ANONYMOUS_USAGE_STATS=0"])
+        self.check_ok("PASS  telemetry: emb (Infinity) has its usage stats off")
+
+    def test_infinity_without_switches_fails(self):
+        self.engine("emb", "michaelf34/infinity:0.0.77", ["HF_HOME=/app/.cache"])
+        self.assert_failure("FAIL  telemetry: emb (Infinity) reports to PostHog")
+
+    def test_openwebui_update_check_fails(self):
+        # the image defaults switch analytics off, the release check stays on
+        self.engine("webui", "ghcr.io/open-webui/open-webui:v0.8.5",
+                    ["SCARF_NO_ANALYTICS=true", "DO_NOT_TRACK=true", "ANONYMIZED_TELEMETRY=false"])
+        self.assert_failure("set ENABLE_VERSION_UPDATE_CHECK=false")
+
+    def test_openwebui_with_switches_passes(self):
+        self.engine("webui", "ghcr.io/open-webui/open-webui:v0.8.5",
+                    ["SCARF_NO_ANALYTICS=true", "DO_NOT_TRACK=true", "ANONYMIZED_TELEMETRY=false",
+                     "ENABLE_VERSION_UPDATE_CHECK=false"])
+        self.check_ok("PASS  telemetry: webui (OpenWebUI) has analytics and the update check off")
 
     def test_no_gpu_fails(self):
         self.case["gpu"] = False
