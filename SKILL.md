@@ -14,7 +14,7 @@ description: >
   vendor and a hard gate after every layer; the mandatory deliverable is Docker
   with verified GPU access, serving stacks are optional presets on top.
 metadata:
-  version: 0.6.0
+  version: 0.6.1
   author: Pavel Rykov <paul@drteam.rocks>
   homepage: https://github.com/EvilFreelancer/gpu-server-setup
   triggers: >
@@ -174,7 +174,9 @@ access, produce the full instruction with `<PLACEHOLDERS>` and a fill-in list.
   temperature via `fancontrol`, and lower idle heat (Intel:
   `references/intel/power-cooling.md` sections 1-4).
 - **Intel idle power** (an A770 idles at ~40 W): ASPM L1 on the Arc chains only,
-  via `scripts/arc-aspm.sh`, tested with a revert timer first.
+  via `scripts/arc-aspm.sh`, tested with a revert timer first. L1 must come
+  after i915/xe has probed the cards, or they stay at ~40 W; the script waits
+  for the driver.
 - **Monitoring**: NVIDIA `nvitop` (`references/nvidia/monitoring.md`); Intel
   `intel_gpu_top`, `nvtop`, `sensors` (`references/intel/driver.md`).
 

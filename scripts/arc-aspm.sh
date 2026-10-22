@@ -6,6 +6,10 @@
 # accepts only 64 us of L1 exit latency, the path exceeds that, so the whole
 # chain stays in L0 (the quirk in drivers/pci/quirks.c covers the GPU function
 # only). This script:
+#   0. waits until i915 or xe has bound every Arc GPU: a card that gets L1 before
+#      the driver probes it never reaches its deep idle and stays at about 40 W,
+#      and turning L1 off and on again later does not bring it back (2x A770,
+#      xe, 2026-10-22: a boot from NVMe ran this before xe probed the cards);
 #   1. forbids every ASPM state on every link that is NOT part of an Arc card
 #      (NICs, chipset, SATA keep their firmware state, which is usually off);
 #   2. forbids the L1.1/L1.2 substates everywhere (L1.1 on a CPU root-port link
@@ -15,7 +19,7 @@
 #      plain L1 on the Arc links;
 #   5. prints the resulting state of every Arc link and fails if a card's
 #      config space no longer answers.
-# Config: /etc/default/arc-aspm (ARC_IDS, ARC_AUDIO_IDS). Revert: write
+# Config: /etc/default/arc-aspm (ARC_IDS, ARC_AUDIO_IDS, ARC_WAIT_S). Revert: write
 # "default" to /sys/module/pcie_aspm/parameters/policy, then
 # "echo 1 > /sys/bus/pci/rescan" brings the audio functions back.
 set -u
@@ -23,6 +27,7 @@ CONF=${ARC_CONF:-/etc/default/arc-aspm}
 [ -r "$CONF" ] && . "$CONF"
 : "${ARC_IDS:=0x56a0}"           # GPU PCI device ids
 : "${ARC_AUDIO_IDS:=0x4f90}"     # their HDMI audio functions (DG2: 0x4f90-0x4f92)
+: "${ARC_WAIT_S:=60}"            # how long to wait for i915/xe to bind every card
 SYS=${SYS:-/sys}
 DEVS=$SYS/bus/pci/devices
 
@@ -50,6 +55,25 @@ done
 [ -n "$gpus" ] || { echo "arc-aspm: no Arc GPU with ids: $ARC_IDS" >&2; exit 1; }
 
 rc=0
+# L1 only after the driver has probed every card (step 0 above).
+t=0
+while :; do
+  unbound=""
+  for b in $gpus; do
+    case "$(readlink "$DEVS/$b/driver" 2>/dev/null)" in
+      */i915|*/xe) ;;
+      *) unbound="$unbound $b" ;;
+    esac
+  done
+  [ -z "$unbound" ] && { echo "arc-aspm: driver bound to every Arc GPU after ${t} s"; break; }
+  if [ "$t" -ge "$ARC_WAIT_S" ]; then
+    echo "arc-aspm: no i915/xe on$unbound after ${ARC_WAIT_S} s; setting L1 anyway, but these cards will not reach their deep idle until a reboot that loads the driver first" >&2
+    rc=1
+    break
+  fi
+  sleep 1; t=$((t + 1))
+done
+
 for d in "$DEVS"/*; do
   b=${d##*/}
   [ -d "$d/link" ] || continue

@@ -244,6 +244,8 @@ The fix on a headless server: remove the HDMI audio function from the bus,
 let the kernel recompute, allow plain L1 only. `scripts/arc-aspm.sh` does it
 in a safe order:
 
+0. waits up to `ARC_WAIT_S` seconds (60) until i915 or xe has bound every
+   Arc GPU, see "L1 after the driver" below;
 1. forbids every ASPM state on all links that are not part of an Arc card
    (NIC, chipset, SATA keep their firmware state);
 2. forbids the L1.1/L1.2 substates everywhere;
@@ -256,9 +258,29 @@ sudo install -m 0755 scripts/arc-aspm.sh /usr/local/sbin/arc-aspm
 printf 'ARC_IDS="0x56a0"\nARC_AUDIO_IDS="0x4f90"\n' | sudo tee /etc/default/arc-aspm
 # unit: same shape as arc-power-cap.service, ExecStart=/usr/local/sbin/arc-aspm
 sudo systemctl enable --now arc-aspm
-sudo journalctl -u arc-aspm -b -o cat     # "arc-aspm: <bdf> l1_aspm=1" for every Arc link
+sudo journalctl -u arc-aspm -b -o cat     # "driver bound to every Arc GPU", then "arc-aspm: <bdf> l1_aspm=1" for every Arc link
 sudo lspci -vv -s <card upstream bridge> | grep LnkCtl     # ASPM L1 Enabled
 ```
+
+**L1 after the driver.** A card that gets L1 before i915 or xe probes it never
+reaches the deep idle: `LnkCtl` reads `ASPM L1 Enabled` on both ends, the GT
+sits in RC6, and the card still draws about 40 W, as if ASPM were off. Turning
+L1 off and on again once the driver is up does not bring it back, and neither
+does runtime suspend; only a boot in the right order does. The unit is ordered
+after `systemd-udev-trigger.service` only, which does not wait for the driver:
+the GPU driver loads from the root file system when it is not in the
+initramfs, and a fast boot disk lets the unit win the race. Seen on 2x A770
+(xe, kernel 7.2.9) after a move from an HDD to an NVMe on 2026-10-22: the unit
+finished 10 ms before xe probed the first card, both cards idled at 39-50 W
+for a day; with L1 set after the probe they went back under 1 W at once. The
+script now waits for the driver itself, so the unit needs no extra ordering. When
+the wait times out it still sets L1, exits 1 and says which card had no
+driver; such a card needs a reboot that loads the driver first.
+
+To check a box: the journal of the boot shows the driver's `Found dg2` (or
+`Found DG2`) lines before the first `arc-aspm: ... l1_aspm=1` line, and the
+energy counter of an idle card hardly moves (sample `energy*_input` 10 s apart:
+well under 1 W, against 39 W in the bad order).
 
 **Plain L1 only.** On an AMD B550 board the first attempt also enabled
 L1.1 on the CPU root-port link (`powersupersave` does that when the root

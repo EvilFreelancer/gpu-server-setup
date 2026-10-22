@@ -51,8 +51,8 @@ part comes from bringing up a dual Arc A770 server on Debian 13 in 2026.
   curves cannot be changed from Linux, and what works instead: case fans via
   `fancontrol` from the hottest GPU temperature (including an out-of-tree
   `it87` for Gigabyte boards), and ASPM L1 on the Arc chains only
-  (`scripts/arc-aspm.sh`), which takes an idle A770 from 50-56 C to about
-  40-45 C.
+  (`scripts/arc-aspm.sh`, set after the GPU driver has probed the cards), which
+  takes an idle A770 from 50-56 C to about 40-45 C.
 - **Troubleshooting** — symptom → cause → fix table for the classic failures:
   Secure Boot vs DKMS, "Driver/library version mismatch",
   `could not select device driver "nvidia"`, CUDA OOM, silent CPU fallback.

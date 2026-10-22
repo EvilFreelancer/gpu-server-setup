@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -36,6 +37,17 @@ TOPOLOGY = {
 
 
 class ArcAspmTests(unittest.TestCase):
+    GPUS = ("0000:0a:00.0", "0000:05:00.0")
+
+    def bind(self, bdf, driver):
+        link = self.sys / "bus/pci/devices" / bdf / "driver"
+        if link.is_symlink():
+            link.unlink()
+        link.symlink_to(self.sys / "bus/pci/drivers" / driver)
+
+    def unbind(self, bdf):
+        (self.sys / "bus/pci/devices" / bdf / "driver").unlink()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -56,6 +68,11 @@ class ArcAspmTests(unittest.TestCase):
                 for a in attrs:
                     (d / "link" / a).write_text("0\n" if a != "l1_1_aspm" else "1\n")
             (devices / bdf).symlink_to(d)
+        drivers = self.sys / "bus/pci/drivers"
+        for name in ("xe", "i915"):
+            (drivers / name).mkdir(parents=True)
+        for gpu in self.GPUS:
+            self.bind(gpu, "xe")
         policy = self.sys / "module/pcie_aspm/parameters"
         policy.mkdir(parents=True)
         (policy / "policy").write_text("[default] performance powersave powersupersave\n")
@@ -97,6 +114,38 @@ class ArcAspmTests(unittest.TestCase):
         result = self.run_aspm()
         self.assertEqual(result.returncode, 1)
         self.assertIn("0000:08:00.0 does not answer config reads", result.stderr)
+
+    def test_waits_for_the_driver_before_l1(self):
+        self.unbind("0000:05:00.0")
+        self.env["ARC_WAIT_S"] = "10"
+        policy = self.sys / "module/pcie_aspm/parameters/policy"
+        proc = subprocess.Popen(["sh", str(SCRIPT)], env=self.env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1.5)
+        self.assertIsNone(proc.poll(), "finished before the driver bound")
+        self.assertIn("default", policy.read_text())
+        self.assertEqual(self.attr("0000:08:00.0", "link/l1_1_aspm"), "1")
+        self.bind("0000:05:00.0", "xe")
+        out, err = proc.communicate(timeout=10)
+        self.assertEqual(proc.returncode, 0, out + err)
+        self.assertRegex(out, r"driver bound to every Arc GPU after [1-9]\d* s")
+        self.assertEqual(policy.read_text().strip(), "powersupersave")
+
+    def test_i915_counts_as_bound(self):
+        self.bind("0000:0a:00.0", "i915")
+        result = self.run_aspm()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("driver bound to every Arc GPU after 0 s", result.stdout)
+
+    def test_unbound_gpu_times_out_and_fails(self):
+        self.unbind("0000:05:00.0")
+        self.env["ARC_WAIT_S"] = "0"
+        result = self.run_aspm()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("no i915/xe on 0000:05:00.0 after 0 s", result.stderr)
+        self.assertNotIn("0000:0a:00.0 after", result.stderr)
+        policy = self.sys / "module/pcie_aspm/parameters/policy"
+        self.assertEqual(policy.read_text().strip(), "powersupersave")
 
     def test_no_arc_gpu_fails_without_touching_policy(self):
         self.env["ARC_CONF"] = str(Path(self.tmp.name) / "conf2")
